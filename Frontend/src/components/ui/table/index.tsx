@@ -46,7 +46,7 @@ const TableHeader: React.FC<TableHeaderProps> = ({
 }) => {
   return (
     <thead
-      className={`bg-[#0799c9] text-white dark:bg-[#0799c9] dark:text-white ${className ?? ""
+      className={`text-white dark:text-white ${className ?? ""
         }`}
       {...props}
     >
@@ -91,7 +91,7 @@ const TableCell: React.FC<TableCellProps> = ({
   const CellTag = isHeader ? "th" : "td";
 
   return (
-    <CellTag className={className} {...props}>
+    <CellTag className={`${isHeader ? "bg-[#0799c9] text-white first:rounded-l-lg last:rounded-r-lg" : ""} ${className ?? ""}`} {...props}>
       {children}
     </CellTag>
   );

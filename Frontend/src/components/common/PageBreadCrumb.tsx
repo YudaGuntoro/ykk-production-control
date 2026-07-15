@@ -6,7 +6,7 @@ import React from "react";
 import { navItems } from "@/layout/navItems";
 
 interface BreadcrumbProps {
-  pageTitle: string;
+  pageTitle?: string;
   parentTitle?: string;
 }
 
@@ -39,11 +39,19 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
   parentTitle,
 }) => {
   const pathname = usePathname();
+  const matchedNav = navItems.find((nav) => nav.path && isPathMatch(nav.path, pathname));
+  const matchedSubItem = navItems
+    .flatMap((nav) =>
+      nav.subItems?.map((subItem) => ({
+        ...subItem,
+        parentTitle: nav.name,
+      })) ?? []
+    )
+    .find((subItem) => isPathMatch(subItem.path, pathname));
+  const currentPageTitle = pageTitle ?? matchedSubItem?.name ?? matchedNav?.name ?? "Dashboard";
   const matchedParentTitle =
     parentTitle ??
-    navItems.find((nav) =>
-      nav.subItems?.some((subItem) => isPathMatch(subItem.path, pathname))
-    )?.name;
+    matchedSubItem?.parentTitle;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6 mx-4">
@@ -51,7 +59,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
         className="text-xl font-semibold text-gray-800 dark:text-white/90"
         x-text="pageName"
       >
-        {pageTitle}
+        {currentPageTitle}
       </h2>
       <nav>
         <ol className="flex items-center gap-2">
@@ -76,7 +84,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
             className="text-sm font-medium text-gray-800 dark:text-white/90"
             aria-current="page"
           >
-            {pageTitle}
+            {currentPageTitle}
           </li>
         </ol>
       </nav>

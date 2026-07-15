@@ -22,6 +22,7 @@ Apply the production schema from:
 ProductionControl.Persistence/Migrations/20260707_001_production_control_monitoring.sql
 ProductionControl.Persistence/Migrations/20260707_002_production_work_order_operators.sql
 ProductionControl.Persistence/Migrations/20260708_001_shift_master_and_no_target.sql
+ProductionControl.Persistence/Migrations/20260708_002_shift_master_schedule.sql
 ```
 
 ## API Modules

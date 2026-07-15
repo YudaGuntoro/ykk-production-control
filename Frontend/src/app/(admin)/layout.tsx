@@ -2,6 +2,7 @@
 
 import { useSidebar } from "@/context/SidebarContext";
 import { AuthGuard } from "@/lib/AuthGuard";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
@@ -30,7 +31,10 @@ export default function AdminLayout({
           className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}
         >
           <AppHeader />
-          <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
+          <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+            <PageBreadcrumb />
+            {children}
+          </div>
         </div>
       </div>
     </AuthGuard>

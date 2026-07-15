@@ -23,8 +23,6 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [autofillLocked, setAutofillLocked] = useState(true);
-  const [fieldNonce, setFieldNonce] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,21 +31,6 @@ export default function SignInPage() {
       router.replace(nextPath);
     }
   }, [nextPath, router]);
-
-  useEffect(() => {
-    const clearAutofill = () => {
-      setUsername("");
-      setPassword("");
-      document.querySelectorAll<HTMLInputElement>("[data-login-field]").forEach((field) => {
-        field.value = "";
-      });
-    };
-
-    setFieldNonce(crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    clearAutofill();
-    const timers = [150, 600, 1200, 2400].map((delay) => window.setTimeout(clearAutofill, delay));
-    return () => timers.forEach(window.clearTimeout);
-  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,7 +83,7 @@ export default function SignInPage() {
             </div>
           ) : null}
 
-          <form autoComplete="off" data-form-type="other" onSubmit={(event) => void submit(event)}>
+          <form onSubmit={(event) => void submit(event)}>
             <div className="space-y-6">
               <div>
                 <Label htmlFor={`production-user-${usernameFieldId}`}>
@@ -112,22 +95,16 @@ export default function SignInPage() {
                   </span>
                   <Input
                     autoCapitalize="none"
-                    autoComplete="new-password"
+                    autoComplete="username"
                     className="h-12 pl-12"
-                    data-1p-ignore="true"
-                    data-form-type="other"
-                    data-login-field="true"
-                    data-lpignore="true"
                     disabled={loading}
                     id={`production-user-${usernameFieldId}`}
                     inputMode="text"
-                    name={fieldNonce ? `production-operator-${fieldNonce}` : `production-operator-${usernameFieldId}`}
+                    name="username"
                     onChange={(event) => setUsername(event.target.value)}
-                    onFocus={() => setAutofillLocked(false)}
                     placeholder="Enter username"
-                    readOnly={autofillLocked}
                     spellCheck={false}
-                    type="search"
+                    type="text"
                     value={username}
                   />
                 </div>
@@ -142,19 +119,13 @@ export default function SignInPage() {
                     <LockIcon className="size-5 fill-current" />
                   </span>
                   <Input
-                    autoComplete="new-password"
+                    autoComplete="current-password"
                     className="h-12 pl-12 pr-12"
-                    data-1p-ignore="true"
-                    data-form-type="other"
-                    data-login-field="true"
-                    data-lpignore="true"
                     disabled={loading}
                     id={`production-secret-${passwordFieldId}`}
-                    name={fieldNonce ? `production-key-${fieldNonce}` : `production-key-${passwordFieldId}`}
+                    name="password"
                     onChange={(event) => setPassword(event.target.value)}
-                    onFocus={() => setAutofillLocked(false)}
                     placeholder="Enter password"
-                    readOnly={autofillLocked}
                     type={showPassword ? "text" : "password"}
                     value={password}
                   />

@@ -35,14 +35,17 @@ export const navItems: NavItem[] = [
     icon: <BoxCubeIcon />,
     name: "Master Data",
     subItems: [
-      { name: "Cutting Lists", path: "/cutting-lists" },
-      { name: "Shift Master", path: "/shift-master" },
-      { name: "Operator Cards", path: "/pic-cards" },
+      { name: "Shift", path: "/shift-master" },
+      { name: "Area", path: "/area-master" },
+      { name: "Operator List", path: "/pic-cards" },
     ],
   },
   {
     icon: <DocsIcon />,
     name: "Production Activity",
-    path: "/production-history",
+    subItems: [
+      { name: "Production Activity", path: "/production-history" },
+      { name: "Cutting List History", path: "/cutting-lists" },
+    ],
   },
 ];

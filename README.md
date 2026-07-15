@@ -47,7 +47,7 @@ ProductionControl/ProductionControl.Persistence/Migrations/20260707_001_producti
 API:
 
 ```powershell
-$env:ConnectionStrings__DefaultConnection="Server=127.0.0.1;Port=3306;User ID=root;Password=YOUR_PASSWORD;Database=db_production_control;SslMode=None;AllowPublicKeyRetrieval=True;"
+$env:ConnectionStrings__DefaultConnection="Server=127.0.0.1;Port=3306;User ID=root;Password=root_native;Database=db_production_control;SslMode=None;AllowPublicKeyRetrieval=True;"
 dotnet run --project ProductionControl.WebAPI\ProductionControl.WebAPI.csproj
 ```
 

@@ -5,14 +5,15 @@ CREATE TABLE IF NOT EXISTS shift_masters (
     id INT AUTO_INCREMENT PRIMARY KEY,
     shift_code VARCHAR(50) NOT NULL,
     shift_name VARCHAR(100) NOT NULL,
-    sort_order INT NOT NULL DEFAULT 0,
+    shift_type VARCHAR(30) NULL,
+    start_schedule TIME NULL,
+    finish_schedule TIME NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_shift_masters_code (shift_code),
-    KEY ix_shift_masters_sort_order (sort_order)
+    UNIQUE KEY uq_shift_masters_code (shift_code)
 );
 
-CREATE TABLE IF NOT EXISTS pic_cards (
+CREATE TABLE IF NOT EXISTS operator_master (
     id INT AUTO_INCREMENT PRIMARY KEY,
     card_uid VARCHAR(100) NOT NULL,
     employee_no VARCHAR(50) NOT NULL,
@@ -22,8 +23,8 @@ CREATE TABLE IF NOT EXISTS pic_cards (
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     last_scanned_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_pic_cards_card_uid (card_uid),
-    UNIQUE KEY uq_pic_cards_employee_no (employee_no)
+    UNIQUE KEY uq_operator_master_card_uid (card_uid),
+    UNIQUE KEY uq_operator_master_employee_no (employee_no)
 );
 
 CREATE TABLE IF NOT EXISTS cutting_lists (
@@ -43,7 +44,7 @@ CREATE TABLE IF NOT EXISTS cutting_lists (
 
 CREATE TABLE IF NOT EXISTS production_work_orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    wo_number VARCHAR(80) NOT NULL,
+    order_number VARCHAR(80) NOT NULL,
     cutting_list_id INT NOT NULL,
     pic_card_id INT NULL,
     line_code VARCHAR(50) NOT NULL,
@@ -55,10 +56,10 @@ CREATE TABLE IF NOT EXISTS production_work_orders (
     completed_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_production_work_orders_no (wo_number),
+    UNIQUE KEY uq_production_work_orders_no (order_number),
     KEY ix_production_work_orders_status_line (status, line_code),
     CONSTRAINT fk_production_wo_cutting_list FOREIGN KEY (cutting_list_id) REFERENCES cutting_lists(id),
-    CONSTRAINT fk_production_wo_pic FOREIGN KEY (pic_card_id) REFERENCES pic_cards(id) ON DELETE SET NULL
+    CONSTRAINT fk_production_wo_pic FOREIGN KEY (pic_card_id) REFERENCES operator_master(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS production_activity_logs (
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS production_activity_logs (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY ix_production_logs_wo_created (production_work_order_id, created_at),
     CONSTRAINT fk_production_logs_wo FOREIGN KEY (production_work_order_id) REFERENCES production_work_orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_production_logs_pic FOREIGN KEY (pic_card_id) REFERENCES pic_cards(id) ON DELETE SET NULL
+    CONSTRAINT fk_production_logs_pic FOREIGN KEY (pic_card_id) REFERENCES operator_master(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS production_work_order_operators (
@@ -83,22 +84,24 @@ CREATE TABLE IF NOT EXISTS production_work_order_operators (
     KEY ix_production_wo_operators_active (production_work_order_id, is_active),
     KEY ix_production_wo_operators_pic (pic_card_id),
     CONSTRAINT fk_production_wo_operators_wo FOREIGN KEY (production_work_order_id) REFERENCES production_work_orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_production_wo_operators_pic FOREIGN KEY (pic_card_id) REFERENCES pic_cards(id)
+    CONSTRAINT fk_production_wo_operators_pic FOREIGN KEY (pic_card_id) REFERENCES operator_master(id)
 );
 
-INSERT INTO shift_masters (shift_code, shift_name, sort_order, is_active)
+INSERT INTO shift_masters (shift_code, shift_name, shift_type, start_schedule, finish_schedule, is_active)
 VALUES
-    ('SHIFT_1', 'Shift 1', 1, 1),
-    ('SHIFT_2', 'Shift 2', 2, 1),
-    ('SHIFT_3', 'Shift 3', 3, 1),
-    ('LONG_SHIFT_1', 'Long Shift 1', 4, 1),
-    ('LONG_SHIFT_2', 'Long Shift 2', 5, 1)
+    ('SHIFT_1', 'Shift 1', 'Day', '07:00:00', '15:00:00', 1),
+    ('SHIFT_2', 'Shift 2', 'Middle', '15:00:00', '23:00:00', 1),
+    ('SHIFT_3', 'Shift 3', 'Night', '23:00:00', '07:00:00', 1),
+    ('LONG_SHIFT_1', 'Long Shift 1', NULL, NULL, NULL, 1),
+    ('LONG_SHIFT_2', 'Long Shift 2', NULL, NULL, NULL, 1)
 ON DUPLICATE KEY UPDATE
     shift_name = VALUES(shift_name),
-    sort_order = VALUES(sort_order),
+    shift_type = VALUES(shift_type),
+    start_schedule = VALUES(start_schedule),
+    finish_schedule = VALUES(finish_schedule),
     is_active = VALUES(is_active);
 
-INSERT IGNORE INTO pic_cards (id, card_uid, employee_no, full_name, department, shift)
+INSERT IGNORE INTO operator_master (id, card_uid, employee_no, full_name, department, shift)
 VALUES
     (1, 'YKK-PIC-0001', 'YKK001', 'Budi Santoso', 'Production', 'Shift 1'),
     (2, 'YKK-PIC-0002', 'YKK002', 'Siti Rahma', 'Production', 'Shift 1'),
@@ -112,7 +115,7 @@ VALUES
     (3, 'CL-YKK-003', 'HDL-LOCK-01', 'Handle Lock Assembly', 'LINE-03', 0, 'SET', CURRENT_DATE, 'COMPLETED');
 
 INSERT IGNORE INTO production_work_orders
-    (id, wo_number, cutting_list_id, pic_card_id, line_code, target_qty, actual_qty, reject_qty, status, started_at, completed_at)
+    (id, order_number, cutting_list_id, pic_card_id, line_code, target_qty, actual_qty, reject_qty, status, started_at, completed_at)
 VALUES
     (1, 'WO-YKK-001', 1, 1, 'LINE-01', 0, 325, 3, 'IN_PROGRESS', TIMESTAMP(CURRENT_DATE, '07:30:00'), NULL),
     (2, 'WO-YKK-002', 2, NULL, 'LINE-02', 0, 0, 0, 'WAITING', NULL, NULL),

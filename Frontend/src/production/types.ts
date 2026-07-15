@@ -1,14 +1,11 @@
 export type ProductionWorkOrderStatus =
   | "WAITING"
-  | "READY"
   | "IN_PROGRESS"
-  | "HOLD"
-  | "COMPLETED"
-  | "CANCELLED";
+  | "FINISH";
 
 export type ProductionWorkOrder = {
   id: number;
-  wo_number: string;
+  order_number: string;
   cutting_list_id: number;
   cutting_list_no: string;
   product_code: string;
@@ -18,6 +15,12 @@ export type ProductionWorkOrder = {
   employee_no?: string | null;
   operator_shift?: string | null;
   operator_department?: string | null;
+  work_shift_code?: string | null;
+  work_shift_name?: string | null;
+  work_shift_type?: string | null;
+  area_master_id?: number | null;
+  area_code?: string | null;
+  area_name?: string | null;
   operators: ProductionOperator[];
   line_code: string;
   actual_qty: number;
@@ -37,7 +40,31 @@ export type ProductionOperator = {
   full_name: string;
   department: string;
   shift: string;
+  work_shift_code?: string | null;
+  work_shift_name?: string | null;
+  work_shift_type?: string | null;
   scanned_at: string;
+};
+
+export type ProductionActiveOperator = {
+  id: number;
+  pic_card_id: number;
+  card_uid: string;
+  employee_no: string;
+  full_name: string;
+  department: string;
+  operator_shift: string;
+  shift_master_id?: number | null;
+  shift_code?: string | null;
+  shift_name?: string | null;
+  shift_type?: string | null;
+  scanned_at: string;
+};
+
+export type ActiveOperatorSummary = {
+  current_shift?: ShiftMaster | null;
+  has_shift_changed: boolean;
+  operators: ProductionActiveOperator[];
 };
 
 export type ProductionDashboardSummary = {
@@ -48,6 +75,16 @@ export type ProductionDashboardSummary = {
   actual_qty: number;
   reject_qty: number;
   work_orders: ProductionWorkOrder[];
+  daily_shift_outputs: ProductionDashboardShiftOutput[];
+};
+
+export type ProductionDashboardShiftOutput = {
+  date: string;
+  date_label: string;
+  shift_1_count: number;
+  shift_2_count: number;
+  shift_3_count: number;
+  total_count: number;
 };
 
 export type CuttingList = {
@@ -56,10 +93,17 @@ export type CuttingList = {
   product_code: string;
   product_name: string;
   line_code: string;
+  planned_qty: number;
   unit: string;
   plan_date: string;
-  status: "OPEN" | "RELEASED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  status: "WAITING" | "IN_PROGRESS" | "FINISH";
   created_at: string;
+  order_number?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  operators?: ProductionOperator[];
+  start_operators?: ProductionOperator[];
+  finish_operators?: ProductionOperator[];
 };
 
 export type PicCard = {
@@ -78,15 +122,27 @@ export type ShiftMaster = {
   id: number;
   shift_code: string;
   shift_name: string;
-  sort_order: number;
+  shift_type?: string | null;
+  start_schedule?: string | null;
+  finish_schedule?: string | null;
   is_active: boolean;
   created_at: string;
+};
+
+export type AreaMaster = {
+  id: number;
+  area_code: string;
+  area_name: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ProductionActivityLog = {
   id: number;
   production_work_order_id: number;
-  wo_number?: string | null;
+  order_number?: string | null;
   pic_name?: string | null;
   activity_type: string;
   remarks?: string | null;

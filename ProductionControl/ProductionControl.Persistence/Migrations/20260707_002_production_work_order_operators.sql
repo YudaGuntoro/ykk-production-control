@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS production_work_order_operators (
     KEY ix_production_wo_operators_active (production_work_order_id, is_active),
     KEY ix_production_wo_operators_pic (pic_card_id),
     CONSTRAINT fk_production_wo_operators_wo FOREIGN KEY (production_work_order_id) REFERENCES production_work_orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_production_wo_operators_pic FOREIGN KEY (pic_card_id) REFERENCES pic_cards(id)
+    CONSTRAINT fk_production_wo_operators_pic FOREIGN KEY (pic_card_id) REFERENCES operator_master(id)
 );
 
 INSERT INTO production_work_order_operators (production_work_order_id, pic_card_id, is_active, scanned_at, removed_at)
