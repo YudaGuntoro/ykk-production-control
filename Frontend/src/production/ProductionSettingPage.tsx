@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPut, getApiBaseUrl } from "@/lib/api";
 import { clearStoredApiBaseUrl, getStoredApiBaseUrl, setStoredApiBaseUrl } from "@/lib/runtimeApiConfig";
 
@@ -115,10 +116,10 @@ function getPayloadMessage(payload: unknown) {
 }
 
 export default function ProductionSettingPage() {
+  const toast = useToast();
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [settings, setSettings] = useState<Record<IntegrationSettingKey, IntegrationSetting>>(defaultSettings);
   const [lotNo, setLotNo] = useState("");
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [loadingKey, setLoadingKey] = useState<IntegrationSettingKey | "test" | "">("");
   const [previewRows, setPreviewRows] = useState<EndpointPreviewRow[]>([]);
 
@@ -147,7 +148,7 @@ export default function ProductionSettingPage() {
         }));
       } catch (err) {
         if (alive) {
-          setMessage({ kind: "error", text: err instanceof Error ? err.message : "Gagal memuat setting endpoint." });
+          toast.error({ message: err instanceof Error ? err.message : "Gagal memuat setting endpoint." });
         }
       } finally {
         if (alive) setLoadingKey("");
@@ -158,20 +159,20 @@ export default function ProductionSettingPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [toast]);
 
   function saveApiBaseUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const saved = setStoredApiBaseUrl(apiBaseUrl);
     setApiBaseUrl(saved);
-    setMessage({ kind: "ok", text: "API server berhasil disimpan. Request berikutnya akan memakai URL ini." });
+    toast.success({ message: "API server berhasil disimpan. Request berikutnya akan memakai URL ini." });
   }
 
   function resetApiBaseUrl() {
     clearStoredApiBaseUrl();
     const fallback = getApiBaseUrl();
     setApiBaseUrl(fallback);
-    setMessage({ kind: "ok", text: "API server dikembalikan ke default." });
+    toast.success({ message: "API server dikembalikan ke default." });
   }
 
   const shiagePreviewUrl = useMemo(
@@ -206,14 +207,13 @@ export default function ProductionSettingPage() {
     };
 
     setLoadingKey(definition.key);
-    setMessage(null);
 
     try {
       const saved = await apiPut<IntegrationSetting>(`/api/production/settings/integration/${definition.key}`, nextSetting);
       setSettings((currentSettings) => ({ ...currentSettings, [definition.key]: saved }));
-      setMessage({ kind: "ok", text: `${definition.title} berhasil disimpan.` });
+      toast.success({ message: `${definition.title} berhasil disimpan.` });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Gagal menyimpan setting endpoint." });
+      toast.error({ message: err instanceof Error ? err.message : "Gagal menyimpan setting endpoint." });
     } finally {
       setLoadingKey("");
     }
@@ -221,7 +221,6 @@ export default function ProductionSettingPage() {
 
   async function testShiageEndpoint() {
     setLoadingKey("test");
-    setMessage(null);
     setPreviewRows([]);
 
     try {
@@ -244,9 +243,9 @@ export default function ProductionSettingPage() {
             ? payload
             : [];
       setPreviewRows(rows.slice(0, 10));
-      setMessage({ kind: "ok", text: `Endpoint berhasil diakses. ${rows.length} row diterima.` });
+      toast.success({ message: `Endpoint berhasil diakses. ${rows.length} row diterima.` });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Gagal mengakses endpoint Shiage." });
+      toast.error({ message: err instanceof Error ? err.message : "Gagal mengakses endpoint Shiage." });
     } finally {
       setLoadingKey("");
     }
@@ -261,12 +260,6 @@ export default function ProductionSettingPage() {
           Pusat konfigurasi endpoint produksi dan akses sistem.
         </p>
       </div>
-
-      {message ? (
-        <div className={`rounded-lg px-4 py-3 text-sm font-semibold ${message.kind === "ok" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"}`}>
-          {message.text}
-        </div>
-      ) : null}
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">

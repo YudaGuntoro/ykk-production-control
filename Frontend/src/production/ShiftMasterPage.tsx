@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPut } from "@/lib/api";
 import type { ShiftMaster } from "./types";
 
@@ -12,20 +13,18 @@ function formatSchedule(value?: string | null) {
 }
 
 export default function ShiftMasterPage() {
+  const toast = useToast();
   const [items, setItems] = useState<ShiftMaster[]>([]);
   const [editing, setEditing] = useState<ShiftMaster | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     await apiGet<ShiftMaster[]>("/api/production/shift-masters")
       .then((data) => {
         setItems(data);
-        setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load data."));
-  }, []);
+      .catch((err) => toast.error({ message: err instanceof Error ? err.message : "Failed to load data." }));
+  }, [toast]);
 
   useEffect(() => {
     void load();
@@ -37,8 +36,6 @@ export default function ShiftMasterPage() {
 
     const form = new FormData(event.currentTarget);
     setBusy(true);
-    setMessage(null);
-    setError(null);
 
     try {
       await apiPut<ShiftMaster>(`/api/production/shift-masters/${editing.id}`, {
@@ -49,10 +46,10 @@ export default function ShiftMasterPage() {
         is_active: form.get("is_active") === "on",
       });
       setEditing(null);
-      setMessage("Shift master updated successfully.");
+      toast.success({ message: "Shift master updated successfully." });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update shift master.");
+      toast.error({ message: err instanceof Error ? err.message : "Failed to update shift master." });
     } finally {
       setBusy(false);
     }
@@ -65,9 +62,6 @@ export default function ShiftMasterPage() {
         <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Shift Master</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Production shifts available for operator scanning.</p>
       </div>
-
-      {message ? <div className="rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</div> : null}
 
       {editing ? (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/50 p-4">
@@ -162,7 +156,7 @@ export default function ShiftMasterPage() {
               ))}
             </tbody>
           </table>
-          {!items.length && !error ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No shift master data.</p> : null}
+          {!items.length ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No shift master data.</p> : null}
         </div>
       </div>
     </div>

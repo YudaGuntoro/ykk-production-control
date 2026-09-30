@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { ExcelIcon } from "@/icons";
@@ -77,6 +78,7 @@ function OperatorList({ emptyText, operators }: { emptyText: string; operators: 
 }
 
 export default function CuttingListsPage() {
+  const toast = useToast();
   const [items, setItems] = useState<CuttingList[]>([]);
   const [statusFilter, setStatusFilter] = useState<CuttingListStatus | "ALL">("ALL");
   const [dateFilterMode, setDateFilterMode] = useState<ProductionDateFilterMode>("date");
@@ -84,7 +86,6 @@ export default function CuttingListsPage() {
   const [dateRange, setDateRange] = useState<ProductionDateRange>({ startDate: "", endDate: "" });
   const [dateFilterResetKey, setDateFilterResetKey] = useState(0);
   const [selectedItem, setSelectedItem] = useState<CuttingList | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [exportingList, setExportingList] = useState(false);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const debouncedStatusFilter = useDebouncedValue(statusFilter);
@@ -95,8 +96,8 @@ export default function CuttingListsPage() {
   useEffect(() => {
     void apiGet<CuttingList[]>("/api/production/cutting-lists")
       .then(setItems)
-      .catch((err) => setMessage(err instanceof Error ? err.message : "Failed to load data."));
-  }, []);
+      .catch((err) => toast.error({ message: err instanceof Error ? err.message : "Failed to load data." }));
+  }, [toast]);
 
   const visibleItems = useMemo(
     () => items
@@ -141,16 +142,15 @@ export default function CuttingListsPage() {
 
   async function exportList() {
     setExportingList(true);
-    setMessage(null);
 
     try {
       await downloadExport(
         `/api/production/cutting-lists/export${buildExportQuery(statusFilter, dateFilterMode, dateFilter, dateRange)}`,
         `Production-History-${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
-      setMessage("Production history export downloaded.");
+      toast.success({ message: "Production history export downloaded." });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to export production history.");
+      toast.error({ message: err instanceof Error ? err.message : "Failed to export production history." });
     } finally {
       setExportingList(false);
     }
@@ -158,16 +158,15 @@ export default function CuttingListsPage() {
 
   async function exportDetail(item: CuttingList) {
     setExportingId(item.id);
-    setMessage(null);
 
     try {
       await downloadExport(
         `/api/production/cutting-lists/${item.id}/export`,
         `Production-History-${item.lot_no || item.order_number || item.id}.xlsx`,
       );
-      setMessage("Production history detail export downloaded.");
+      toast.success({ message: "Production history detail export downloaded." });
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to export production history detail.");
+      toast.error({ message: err instanceof Error ? err.message : "Failed to export production history detail." });
     } finally {
       setExportingId(null);
     }
@@ -270,7 +269,6 @@ export default function CuttingListsPage() {
         <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Production History</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Read-only cutting list data. Integration source is coming soon.</p>
       </div>
-      {message ? <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800">{message}</div> : null}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div>

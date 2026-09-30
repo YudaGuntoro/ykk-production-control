@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, getApiBaseUrl } from "@/lib/api";
 import { getStoredToken } from "@/lib/auth";
 import { ExcelIcon } from "@/icons";
@@ -44,9 +45,9 @@ function formatWeight(value?: number | null) {
 }
 
 export default function ProductionHistoryPage() {
+  const toast = useToast();
   const [items, setItems] = useState<ProductionActivityLog[]>([]);
   const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
   const [dateFilterMode, setDateFilterMode] = useState<ProductionDateFilterMode>("date");
   const [dateFilter, setDateFilter] = useState("");
   const [dateRange, setDateRange] = useState<ProductionDateRange>({ startDate: "", endDate: "" });
@@ -62,12 +63,17 @@ export default function ProductionHistoryPage() {
         if (isActive) {
           setItems(data);
         }
+      })
+      .catch((error) => {
+        if (isActive) {
+          toast.error({ message: error instanceof Error ? error.message : "Failed to load production activity." });
+        }
       });
 
     return () => {
       isActive = false;
     };
-  }, [debouncedDateFilterMode, debouncedDateFilter, debouncedDateRange]);
+  }, [debouncedDateFilterMode, debouncedDateFilter, debouncedDateRange, toast]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => isDateMatchFilter(item.created_at, debouncedDateFilterMode, debouncedDateFilter, debouncedDateRange)),
@@ -82,7 +88,6 @@ export default function ProductionHistoryPage() {
 
   async function handleExport() {
     setExporting(true);
-    setExportError("");
 
     try {
       const token = getStoredToken();
@@ -108,8 +113,9 @@ export default function ProductionHistoryPage() {
       link.click();
       link.remove();
       URL.revokeObjectURL(downloadUrl);
+      toast.success({ message: "Production activity export downloaded." });
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Failed to export production activity.");
+      toast.error({ message: error instanceof Error ? error.message : "Failed to export production activity." });
     } finally {
       setExporting(false);
     }
@@ -148,11 +154,6 @@ export default function ProductionHistoryPage() {
             </button>
           </div>
         </div>
-        {exportError ? (
-          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-200">
-            {exportError}
-          </div>
-        ) : null}
         <div className="overflow-x-auto p-5">
           <table className="w-full min-w-[1200px] border-separate border-spacing-0 text-left">
             <thead className="text-[11px] uppercase tracking-wider text-white">

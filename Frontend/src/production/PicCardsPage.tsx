@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPost } from "@/lib/api";
 import type { PicCard } from "./types";
 import { formatDateTime } from "./ui";
@@ -12,6 +13,7 @@ const inputClass =
   "h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-500 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-300";
 
 export default function PicCardsPage() {
+  const toast = useToast();
   const [items, setItems] = useState<PicCard[]>([]);
   const [cardUid, setCardUid] = useState("");
   const [employeeNo, setEmployeeNo] = useState("");
@@ -22,16 +24,15 @@ export default function PicCardsPage() {
   const [qrSaving, setQrSaving] = useState(false);
   const [pdfSaving, setPdfSaving] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const qrCardRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
       setItems(await apiGet<PicCard[]>("/api/production/pic-cards"));
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load data." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load data." });
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void load();
@@ -41,12 +42,11 @@ export default function PicCardsPage() {
     event.preventDefault();
 
     if (!cardUid.trim() || !employeeNo.trim() || !fullName.trim()) {
-      setMessage({ kind: "error", text: "Scan ID, NIK, dan Nama wajib diisi." });
+      toast.error({ message: "Scan ID, NIK, dan Nama wajib diisi." });
       return;
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       await apiPost<PicCard>("/api/production/pic-cards", {
         card_uid: cardUid.trim(),
@@ -56,10 +56,10 @@ export default function PicCardsPage() {
       setCardUid("");
       setEmployeeNo("");
       setFullName("");
-      setMessage({ kind: "ok", text: "Operator berhasil didaftarkan." });
+      toast.success({ message: "Operator berhasil didaftarkan." });
       await load();
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to register operator." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to register operator." });
     } finally {
       setBusy(false);
     }
@@ -71,14 +71,13 @@ export default function PicCardsPage() {
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       await apiPost<PicCard>(`/api/production/pic-cards/${pendingDeactivate.id}/deactivate`);
-      setMessage({ kind: "ok", text: "Operator berhasil dinonaktifkan." });
+      toast.success({ message: "Operator berhasil dinonaktifkan." });
       setPendingDeactivate(null);
       await load();
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to deactivate operator." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to deactivate operator." });
     } finally {
       setBusy(false);
     }
@@ -87,7 +86,6 @@ export default function PicCardsPage() {
   async function openQr(operator: PicCard) {
     setQrOperator(operator);
     setQrImageUrl("");
-    setMessage(null);
 
     try {
       const dataUrl = await QRCode.toDataURL(operator.employee_no, {
@@ -102,7 +100,7 @@ export default function PicCardsPage() {
       setQrImageUrl(dataUrl);
     } catch (err) {
       setQrOperator(null);
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to generate QR." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to generate QR." });
     }
   }
 
@@ -136,7 +134,7 @@ export default function PicCardsPage() {
       link.click();
       link.remove();
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save QR image." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to save QR image." });
     } finally {
       setQrSaving(false);
     }
@@ -240,7 +238,7 @@ export default function PicCardsPage() {
 
       pdf.save(fileName);
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save QR PDF." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to save QR PDF." });
     } finally {
       setPdfSaving(false);
     }
@@ -352,12 +350,6 @@ export default function PicCardsPage() {
         <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Operator List</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Register scan ID operator and manage the operator list.</p>
       </div>
-
-      {message ? (
-        <div className={`rounded-lg px-4 py-3 text-sm font-semibold ${message.kind === "ok" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"}`}>
-          {message.text}
-        </div>
-      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div>

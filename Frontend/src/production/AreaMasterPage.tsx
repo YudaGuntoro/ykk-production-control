@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import type { AreaMaster } from "./types";
 
@@ -26,20 +27,20 @@ function toForm(item: AreaMaster): AreaForm {
 }
 
 export default function AreaMasterPage() {
+  const toast = useToast();
   const [items, setItems] = useState<AreaMaster[]>([]);
   const [form, setForm] = useState<AreaForm>(emptyForm);
   const [editing, setEditing] = useState<AreaMaster | null>(null);
   const [editForm, setEditForm] = useState<AreaForm>(emptyForm);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
       setItems(await apiGet<AreaMaster[]>("/api/production/line-master?page=1&pageSize=100"));
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load line master." });
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void load();
@@ -57,12 +58,11 @@ export default function AreaMasterPage() {
     event.preventDefault();
 
     if (!form.line_no.trim() || !form.line_name.trim()) {
-      setMessage({ kind: "error", text: "Line No dan Line Name wajib diisi." });
+      toast.error({ message: "Line No dan Line Name wajib diisi." });
       return;
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       await apiPost<AreaMaster>("/api/production/line-master", {
         line_no: form.line_no.trim(),
@@ -71,10 +71,10 @@ export default function AreaMasterPage() {
         is_active: form.is_active,
       });
       setForm(emptyForm);
-      setMessage({ kind: "ok", text: "Line master berhasil ditambahkan." });
+      toast.success({ message: "Line master berhasil ditambahkan." });
       await load();
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to create line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to create line master." });
     } finally {
       setBusy(false);
     }
@@ -85,12 +85,11 @@ export default function AreaMasterPage() {
     if (!editing) return;
 
     if (!editForm.line_no.trim() || !editForm.line_name.trim()) {
-      setMessage({ kind: "error", text: "Line No dan Line Name wajib diisi." });
+      toast.error({ message: "Line No dan Line Name wajib diisi." });
       return;
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       await apiPut<AreaMaster>(`/api/production/line-master/${editing.id}`, {
         line_no: editForm.line_no.trim(),
@@ -100,10 +99,10 @@ export default function AreaMasterPage() {
       });
       setEditing(null);
       setEditForm(emptyForm);
-      setMessage({ kind: "ok", text: "Line master berhasil diupdate." });
+      toast.success({ message: "Line master berhasil diupdate." });
       await load();
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to update line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to update line master." });
     } finally {
       setBusy(false);
     }
@@ -171,12 +170,6 @@ export default function AreaMasterPage() {
         <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Line Master</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Master line untuk kebutuhan produksi.</p>
       </div>
-
-      {message ? (
-        <div className={`rounded-lg px-4 py-3 text-sm font-semibold ${message.kind === "ok" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"}`}>
-          {message.text}
-        </div>
-      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div>

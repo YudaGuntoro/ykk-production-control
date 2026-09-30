@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPost } from "@/lib/api";
 import type { ActiveOperatorSummary, AreaMaster, ProductionActiveOperator, ProductionWorkOrder, ProductionWorkOrderStatus } from "./types";
 import { formatDateTime, StatusBadge, statusStyles, useDebouncedValue } from "./ui";
@@ -36,6 +37,7 @@ function statusText(status: ProductionWorkOrderStatus) {
 }
 
 export default function ProductionControlPage() {
+  const toast = useToast();
   const [orders, setOrders] = useState<ProductionWorkOrder[]>([]);
   const [activeSummary, setActiveSummary] = useState<ActiveOperatorSummary | null>(null);
   const [areaMasters, setAreaMasters] = useState<AreaMaster[]>([]);
@@ -46,7 +48,6 @@ export default function ProductionControlPage() {
   const [orderNumberCode, setOrderNumberCode] = useState("");
   const [operatorCardUid, setOperatorCardUid] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [shiftPromptKey, setShiftPromptKey] = useState<string | null>(null);
   const [confirmRemoveShiftOperators, setConfirmRemoveShiftOperators] = useState(false);
   const [operatorPendingRemove, setOperatorPendingRemove] = useState<ProductionActiveOperator | null>(null);
@@ -71,9 +72,9 @@ export default function ProductionControlPage() {
         return workOrders.find(isActiveOrder)?.id ?? workOrders[0]?.id ?? null;
       });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load data." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load data." });
     }
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   useEffect(() => {
     void load();
@@ -83,9 +84,9 @@ export default function ProductionControlPage() {
     try {
       setActiveSummary(await apiGet<ActiveOperatorSummary>("/api/production/active-operators"));
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load active operators." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load active operators." });
     }
-  }, []);
+  }, [toast]);
 
   const loadAreaMasters = useCallback(async () => {
     try {
@@ -94,9 +95,9 @@ export default function ProductionControlPage() {
       setAreaMasters(sortedAreas);
       setSelectedAreaMasterId(sortedAreas[0] ? String(sortedAreas[0].id) : "");
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load line master." });
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void loadActiveOperators();
@@ -152,7 +153,7 @@ export default function ProductionControlPage() {
 
   async function refreshFromResponse(order: ProductionWorkOrder, text: string, nextStatusFilter = statusFilter) {
     setSelectedId(order.id);
-    setMessage({ kind: "ok", text });
+    toast.success({ message: text });
     await load(order.id, nextStatusFilter);
   }
 
@@ -160,19 +161,18 @@ export default function ProductionControlPage() {
     event.preventDefault();
     const code = orderNumberCode.trim();
     if (!code) {
-      setMessage({ kind: "error", text: "Input Lot No first." });
+      toast.error({ message: "Input Lot No first." });
       return;
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       const order = await apiPost<ProductionWorkOrder>("/api/production/work-orders/scan", { lot_no: code });
       setOrderNumberCode("");
       setStatusFilter("ALL");
       await refreshFromResponse(order, "Active order selected.", "ALL");
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load Lot No." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load Lot No." });
     } finally {
       setBusy(false);
     }
@@ -182,19 +182,18 @@ export default function ProductionControlPage() {
     event.preventDefault();
     const cardUid = operatorCardUid.trim();
     if (!cardUid) {
-      setMessage({ kind: "error", text: "Scan the operator ID first." });
+      toast.error({ message: "Scan the operator ID first." });
       return;
     }
 
     setBusy(true);
-    setMessage(null);
     try {
       const summary = await apiPost<ActiveOperatorSummary>("/api/production/active-operators/scan", { card_uid: cardUid });
       setOperatorCardUid("");
       setActiveSummary(summary);
-      setMessage({ kind: "ok", text: "Operator is active and will be used for the next started Order Number." });
+      toast.success({ message: "Operator is active and will be used for the next started Order Number." });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to scan operator." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to scan operator." });
     } finally {
       setBusy(false);
     }
@@ -202,14 +201,13 @@ export default function ProductionControlPage() {
 
   async function removeOperator(operatorId: number) {
     setBusy(true);
-    setMessage(null);
     try {
       const summary = await apiPost<ActiveOperatorSummary>(`/api/production/active-operators/${operatorId}/remove`);
       setActiveSummary(summary);
       setOperatorPendingRemove(null);
-      setMessage({ kind: "ok", text: "Operator removed from active list." });
+      toast.success({ message: "Operator removed from active list." });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to remove operator." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to remove operator." });
     } finally {
       setBusy(false);
     }
@@ -218,12 +216,11 @@ export default function ProductionControlPage() {
   async function action(path: string, body?: unknown, success = "Updated successfully.") {
     if (!selected) return;
     setBusy(true);
-    setMessage(null);
     try {
       const order = await apiPost<ProductionWorkOrder>(`/api/production/work-orders/${selected.id}/${path}`, body);
       await refreshFromResponse(order, success);
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Process failed." });
+      toast.error({ message: err instanceof Error ? err.message : "Process failed." });
     } finally {
       setBusy(false);
     }
@@ -250,15 +247,6 @@ export default function ProductionControlPage() {
   const canStart = Boolean(selected && selected.status === "WAITING" && activeOperators.length > 0 && selectedAreaMasterId);
   const canFinish = selected?.status === "IN_PROGRESS";
   const canCancelFinish = selected?.status === "FINISH" && Boolean(selected.completed_at);
-
-  useEffect(() => {
-    if (!message) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => setMessage(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [message]);
 
   useEffect(() => {
     if (detailOpen && !selected) {
@@ -295,7 +283,7 @@ export default function ProductionControlPage() {
       return false;
     }
 
-    setMessage({ kind: "error", text: reason });
+    toast.error({ message: reason });
     return true;
   }
 
@@ -304,7 +292,7 @@ export default function ProductionControlPage() {
     const reason = cancelFinishReason.trim();
 
     if (!reason) {
-      setMessage({ kind: "error", text: "Alasan cancel wajib diisi." });
+      toast.error({ message: "Alasan cancel wajib diisi." });
       return;
     }
 
@@ -323,7 +311,6 @@ export default function ProductionControlPage() {
 
   async function removeAllShiftOperators() {
     setBusy(true);
-    setMessage(null);
     try {
       const summary = await apiPost<ActiveOperatorSummary>("/api/production/active-operators/remove-all");
       if (shiftPromptKey && typeof window !== "undefined") {
@@ -332,9 +319,9 @@ export default function ProductionControlPage() {
       setActiveSummary(summary);
       setShiftPromptKey(null);
       setConfirmRemoveShiftOperators(false);
-      setMessage({ kind: "ok", text: "All active operators removed. Scan the next team when ready." });
+      toast.success({ message: "All active operators removed. Scan the next team when ready." });
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to remove active operators." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to remove active operators." });
     } finally {
       setBusy(false);
     }
@@ -466,12 +453,6 @@ export default function ProductionControlPage() {
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Scan operators once, then use the active team for every started order until they are removed.</p>
         </div>
       </div>
-
-      {message ? (
-        <div className={`fixed right-5 top-5 z-[100020] max-w-md rounded-md border px-4 py-3 text-sm font-medium shadow-lg ${message.kind === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}>
-          {message.text}
-        </div>
-      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-0 divide-y divide-slate-100 dark:divide-slate-800 xl:grid-cols-[1fr_1fr_0.8fr] xl:divide-x xl:divide-y-0">
