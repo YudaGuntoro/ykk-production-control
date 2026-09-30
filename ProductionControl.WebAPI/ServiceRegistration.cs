@@ -422,6 +422,8 @@ public static class ServiceRegistration
                     `setting_key` VARCHAR(80) NOT NULL,
                     `base_url` VARCHAR(500) NOT NULL,
                     `endpoint_path` VARCHAR(255) NOT NULL,
+                    `auth_username` VARCHAR(150) NULL,
+                    `auth_password` VARCHAR(500) NULL,
                     `filter_field_name` VARCHAR(80) NOT NULL DEFAULT 'LOT_NO',
                     `top` INT NOT NULL DEFAULT 1,
                     `skip` INT NOT NULL DEFAULT 0,
@@ -433,12 +435,15 @@ public static class ServiceRegistration
                 """);
         }
 
+        AddColumnIfMissing(connection, "production_integration_settings", "auth_username", "VARCHAR(150) NULL");
+        AddColumnIfMissing(connection, "production_integration_settings", "auth_password", "VARCHAR(500) NULL");
+
         ExecuteNonQuery(connection, """
             INSERT INTO `production_integration_settings`
-                (`setting_key`, `base_url`, `endpoint_path`, `filter_field_name`, `top`, `skip`, `is_active`)
+                (`setting_key`, `base_url`, `endpoint_path`, `auth_username`, `auth_password`, `filter_field_name`, `top`, `skip`, `is_active`)
             VALUES
-                ('shiage_lot_no', '', '/fab-shiage-prod-res/', 'LOT_NO', 1, 0, 0),
-                ('internal_system_auth', '', '/auth/login', '-', 1, 0, 1)
+                ('shiage_lot_no', '', '/fab-shiage-prod-res/', NULL, NULL, 'LOT_NO', 1, 0, 0),
+                ('internal_system_auth', '', '/auth/login', NULL, NULL, '-', 1, 0, 1)
             ON DUPLICATE KEY UPDATE
                 `endpoint_path` = IF(`endpoint_path` IS NULL OR `endpoint_path` = '', VALUES(`endpoint_path`), `endpoint_path`),
                 `filter_field_name` = IF(`filter_field_name` IS NULL OR `filter_field_name` = '', VALUES(`filter_field_name`), `filter_field_name`),

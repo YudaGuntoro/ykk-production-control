@@ -235,6 +235,12 @@ public class ProductionIntegrationSetting
     [JsonPropertyName("endpoint_path")]
     public string EndpointPath { get; set; } = string.Empty;
 
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("password")]
+    public string? Password { get; set; }
+
     [JsonPropertyName("filter_field_name")]
     public string FilterFieldName { get; set; } = "LOT_NO";
 
@@ -763,6 +769,12 @@ public class ProductionIntegrationSettingResponse
     [JsonPropertyName("endpoint_path")]
     public string EndpointPath { get; set; } = string.Empty;
 
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("password_set")]
+    public bool PasswordSet { get; set; }
+
     [JsonPropertyName("filter_field_name")]
     public string FilterFieldName { get; set; } = "LOT_NO";
 
@@ -783,6 +795,12 @@ public class SaveProductionIntegrationSettingRequest
 
     [JsonPropertyName("endpoint_path")]
     public string EndpointPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("password")]
+    public string? Password { get; set; }
 
     [JsonPropertyName("filter_field_name")]
     public string FilterFieldName { get; set; } = "LOT_NO";

@@ -139,6 +139,8 @@ public class ProductionControlDbContext : DbContext
             entity.Property(x => x.SettingKey).HasColumnName("setting_key").HasMaxLength(80).IsRequired();
             entity.Property(x => x.BaseUrl).HasColumnName("base_url").HasMaxLength(500).IsRequired();
             entity.Property(x => x.EndpointPath).HasColumnName("endpoint_path").HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Username).HasColumnName("auth_username").HasMaxLength(150);
+            entity.Property(x => x.Password).HasColumnName("auth_password").HasMaxLength(500);
             entity.Property(x => x.FilterFieldName).HasColumnName("filter_field_name").HasMaxLength(80).IsRequired();
             entity.Property(x => x.Top).HasColumnName("top");
             entity.Property(x => x.Skip).HasColumnName("skip");

@@ -323,6 +323,11 @@ public class ProductionControlController : ApiControllerBase
 
             setting.BaseUrl = baseUrl;
             setting.EndpointPath = endpointPath;
+            setting.Username = NormalizeText(request.Username);
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                setting.Password = request.Password.Trim();
+            }
             setting.FilterFieldName = filterFieldName;
             setting.Top = Math.Clamp(request.Top, 1, 1000);
             setting.Skip = Math.Max(0, request.Skip);
@@ -1536,6 +1541,8 @@ public class ProductionControlController : ApiControllerBase
             SettingKey = setting.SettingKey,
             BaseUrl = setting.BaseUrl,
             EndpointPath = setting.EndpointPath,
+            Username = setting.Username,
+            PasswordSet = !string.IsNullOrWhiteSpace(setting.Password),
             FilterFieldName = setting.FilterFieldName,
             Top = setting.Top,
             Skip = setting.Skip,

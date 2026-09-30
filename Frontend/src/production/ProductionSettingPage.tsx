@@ -11,6 +11,9 @@ type IntegrationSetting = {
   setting_key: string;
   base_url: string;
   endpoint_path: string;
+  username?: string | null;
+  password?: string | null;
+  password_set?: boolean;
   filter_field_name: string;
   top: number;
   skip: number;
@@ -29,6 +32,7 @@ type SettingDefinition = {
   title: string;
   description: string;
   endpointPlaceholder: string;
+  showCredentials?: boolean;
   showShiageOptions?: boolean;
 };
 
@@ -45,6 +49,7 @@ const settingDefinitions: SettingDefinition[] = [
     title: "Endpoint Login Internal System",
     description: "Dipakai untuk konfigurasi endpoint auth internal system.",
     endpointPlaceholder: "/auth/login",
+    showCredentials: true,
   },
 ];
 
@@ -53,6 +58,9 @@ const defaultSettings: Record<IntegrationSettingKey, IntegrationSetting> = {
     setting_key: "shiage_lot_no",
     base_url: "",
     endpoint_path: "/fab-shiage-prod-res/",
+    username: "",
+    password: "",
+    password_set: false,
     filter_field_name: "LOT_NO",
     top: 1,
     skip: 0,
@@ -62,6 +70,9 @@ const defaultSettings: Record<IntegrationSettingKey, IntegrationSetting> = {
     setting_key: "internal_system_auth",
     base_url: "",
     endpoint_path: "/auth/login",
+    username: "",
+    password: "",
+    password_set: false,
     filter_field_name: "-",
     top: 1,
     skip: 0,
@@ -200,6 +211,8 @@ export default function ProductionSettingPage() {
     const nextSetting = {
       base_url: normalizeBaseUrl(current.base_url),
       endpoint_path: normalizeEndpointPath(current.endpoint_path, definition.endpointPlaceholder),
+      username: current.username?.trim() || null,
+      password: current.password?.trim() || null,
       filter_field_name: current.filter_field_name.trim() || defaultSettings[definition.key].filter_field_name,
       top: Math.max(1, Math.min(Number(current.top) || 1, 1000)),
       skip: Math.max(0, Number(current.skip) || 0),
@@ -210,7 +223,10 @@ export default function ProductionSettingPage() {
 
     try {
       const saved = await apiPut<IntegrationSetting>(`/api/production/settings/integration/${definition.key}`, nextSetting);
-      setSettings((currentSettings) => ({ ...currentSettings, [definition.key]: saved }));
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        [definition.key]: { ...saved, password: "" },
+      }));
       toast.success({ message: `${definition.title} berhasil disimpan.` });
     } catch (err) {
       toast.error({ message: err instanceof Error ? err.message : "Gagal menyimpan setting endpoint." });
@@ -339,6 +355,33 @@ export default function ProductionSettingPage() {
                 />
                 <span className="mb-3 text-sm font-bold text-slate-700 dark:text-slate-200">Active</span>
               </label>
+
+              {definition.showCredentials ? (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Username</span>
+                    <input
+                      autoComplete="off"
+                      className={inputClass}
+                      onChange={(event) => updateSetting(definition.key, "username", event.target.value)}
+                      placeholder="Masukkan username"
+                      value={setting.username ?? ""}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Password</span>
+                    <input
+                      autoComplete="new-password"
+                      className={inputClass}
+                      onChange={(event) => updateSetting(definition.key, "password", event.target.value)}
+                      placeholder={setting.password_set ? "Sudah tersimpan. Isi untuk mengganti." : "Masukkan password"}
+                      type="password"
+                      value={setting.password ?? ""}
+                    />
+                  </label>
+                </>
+              ) : null}
 
               {definition.showShiageOptions ? (
                 <>
