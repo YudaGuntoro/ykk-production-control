@@ -31,29 +31,36 @@ public class ProductionControlController : ApiControllerBase
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard([FromQuery] DateTime? date)
     {
-        var selectedDate = (date ?? DateTime.Today).Date;
-        var nextDate = selectedDate.AddDays(1);
-        var orders = await WorkOrderQuery()
-            .Where(x => x.PlanDate >= selectedDate && x.PlanDate < nextDate)
-            .OrderBy(x => x.LineCode)
-            .ThenBy(x => x.OrderNumber)
-            .ToListAsync();
-
-        var completedOrders = orders.Where(x => x.CompletedAt.HasValue).ToList();
-        var actualQty = completedOrders.Sum(x => x.ActualQty);
-        var dailyShiftOutputs = await GetDailyShiftOutputs(selectedDate);
-
-        return ApiOk(new ProductionDashboardSummary
+        try
         {
-            TotalWorkOrders = orders.Count,
-            WaitingWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.WAITING),
-            RunningWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.IN_PROGRESS),
-            CompletedWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.FINISH),
-            ActualQty = actualQty,
-            RejectQty = completedOrders.Sum(x => x.RejectQty),
-            WorkOrders = orders.Select(ToDashboardResponse).ToList(),
-            DailyShiftOutputs = dailyShiftOutputs
-        });
+            var selectedDate = (date ?? DateTime.Today).Date;
+            var nextDate = selectedDate.AddDays(1);
+            var orders = await WorkOrderQuery()
+                .Where(x => x.PlanDate >= selectedDate && x.PlanDate < nextDate)
+                .OrderBy(x => x.LineCode)
+                .ThenBy(x => x.OrderNumber)
+                .ToListAsync();
+
+            var completedOrders = orders.Where(x => x.CompletedAt.HasValue).ToList();
+            var actualQty = completedOrders.Sum(x => x.ActualQty);
+            var dailyShiftOutputs = await GetDailyShiftOutputs(selectedDate);
+
+            return ApiOk(new ProductionDashboardSummary
+            {
+                TotalWorkOrders = orders.Count,
+                WaitingWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.WAITING),
+                RunningWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.IN_PROGRESS),
+                CompletedWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.FINISH),
+                ActualQty = actualQty,
+                RejectQty = completedOrders.Sum(x => x.RejectQty),
+                WorkOrders = orders.Select(ToDashboardResponse).ToList(),
+                DailyShiftOutputs = dailyShiftOutputs
+            });
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
     }
 
     [HttpGet("work-orders")]

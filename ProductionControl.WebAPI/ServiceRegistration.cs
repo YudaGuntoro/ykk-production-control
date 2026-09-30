@@ -147,9 +147,9 @@ public static class ServiceRegistration
             app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Production Control Monitoring API v1"));
         }
 
-        app.UseCors();
         app.UseHttpsRedirection();
         app.UseRouting();
+        app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
@@ -203,6 +203,10 @@ public static class ServiceRegistration
                 ExecuteNonQuery(connection, "ALTER TABLE `production_work_orders` CHANGE COLUMN `area_master_id` `line_master_id` INT NULL;");
             }
 
+            EnsureProductionWorkOrderSchema(connection);
+            EnsureReleaseProductionOrderDetailSchema(connection);
+            EnsureProductionOperatorSchema(connection);
+            EnsureProductionActivityLogSchema(connection);
             DropLegacyProductionLineMaster(connection);
             EnsureProductionIntegrationSettings(connection);
         }
@@ -210,6 +214,136 @@ public static class ServiceRegistration
         {
             app.Logger.LogWarning(ex, "Production schema repair skipped.");
         }
+    }
+
+    private static void EnsureProductionWorkOrderSchema(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "production_work_orders"))
+        {
+            return;
+        }
+
+        AddColumnIfMissing(connection, "production_work_orders", "shift_master_id", "INT NULL");
+        if (ColumnExists(connection, "production_work_orders", "area_master_id") &&
+            !ColumnExists(connection, "production_work_orders", "line_master_id"))
+        {
+            ExecuteNonQuery(connection, "ALTER TABLE `production_work_orders` CHANGE COLUMN `area_master_id` `line_master_id` INT NULL;");
+        }
+        else
+        {
+            AddColumnIfMissing(connection, "production_work_orders", "line_master_id", "INT NULL");
+        }
+
+        AddColumnIfMissing(connection, "production_work_orders", "line_code", "VARCHAR(50) NOT NULL DEFAULT '-'");
+        AddColumnIfMissing(connection, "production_work_orders", "target_qty", "INT NOT NULL DEFAULT 0");
+        AddColumnIfMissing(connection, "production_work_orders", "actual_qty", "INT NOT NULL DEFAULT 0");
+        AddColumnIfMissing(connection, "production_work_orders", "reject_qty", "INT NOT NULL DEFAULT 0");
+        AddColumnIfMissing(connection, "production_work_orders", "started_at", "DATETIME NULL");
+        AddColumnIfMissing(connection, "production_work_orders", "completed_at", "DATETIME NULL");
+        AddColumnIfMissing(connection, "production_work_orders", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        AddColumnIfMissing(connection, "production_work_orders", "updated_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+
+        if (!ColumnExists(connection, "production_work_orders", "plan_date"))
+        {
+            ExecuteNonQuery(connection, "ALTER TABLE `production_work_orders` ADD COLUMN `plan_date` DATE NULL;");
+            ExecuteNonQuery(connection, "UPDATE `production_work_orders` SET `plan_date` = DATE(COALESCE(`created_at`, CURRENT_TIMESTAMP)) WHERE `plan_date` IS NULL;");
+        }
+
+        if (!ColumnExists(connection, "production_work_orders", "status_master_id"))
+        {
+            ExecuteNonQuery(connection, "ALTER TABLE `production_work_orders` ADD COLUMN `status_master_id` INT NULL;");
+        }
+
+        if (ColumnExists(connection, "production_work_orders", "status"))
+        {
+            ExecuteNonQuery(connection, """
+                UPDATE `production_work_orders`
+                SET `status_master_id` = CASE
+                    WHEN `status` IN ('COMPLETED', 'FINISH') OR `completed_at` IS NOT NULL THEN 3
+                    WHEN `status` IN ('IN_PROGRESS', 'HOLD') OR `started_at` IS NOT NULL THEN 2
+                    ELSE 1
+                END
+                WHERE `status_master_id` IS NULL;
+                """);
+        }
+
+        ExecuteNonQuery(connection, "UPDATE `production_work_orders` SET `status_master_id` = 1 WHERE `status_master_id` IS NULL;");
+        ExecuteNonQuery(connection, "UPDATE `production_work_orders` SET `plan_date` = DATE(COALESCE(`created_at`, CURRENT_TIMESTAMP)) WHERE `plan_date` IS NULL;");
+
+        AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_status_line", "(`status_master_id`, `line_code`)");
+        AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_plan_line", "(`plan_date`, `line_code`)");
+        AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_shift_master", "(`shift_master_id`)");
+        AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_line_master", "(`line_master_id`)");
+    }
+
+    private static void EnsureReleaseProductionOrderDetailSchema(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "release_production_order_details"))
+        {
+            ExecuteNonQuery(connection, """
+                CREATE TABLE `release_production_order_details` (
+                    `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    `production_work_order_id` INT NOT NULL,
+                    `order_no` VARCHAR(80) NULL,
+                    `lot_no` VARCHAR(80) NULL,
+                    `project_no` VARCHAR(80) NULL,
+                    `project_master_id` INT NULL,
+                    `weight` DECIMAL(12,3) NULL,
+                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY `uq_rpo_details_work_order` (`production_work_order_id`),
+                    KEY `ix_rpo_details_order_no` (`order_no`),
+                    KEY `ix_rpo_details_lot_no` (`lot_no`),
+                    KEY `ix_rpo_details_project_no` (`project_no`),
+                    KEY `ix_rpo_details_project` (`project_master_id`)
+                );
+                """);
+            return;
+        }
+
+        AddColumnIfMissing(connection, "release_production_order_details", "production_work_order_id", "INT NOT NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "order_no", "VARCHAR(80) NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "lot_no", "VARCHAR(80) NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "project_no", "VARCHAR(80) NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "project_master_id", "INT NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "weight", "DECIMAL(12,3) NULL");
+        AddColumnIfMissing(connection, "release_production_order_details", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        AddColumnIfMissing(connection, "release_production_order_details", "updated_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+
+        AddIndexIfMissing(connection, "release_production_order_details", "ix_rpo_details_order_no", "(`order_no`)");
+        AddIndexIfMissing(connection, "release_production_order_details", "ix_rpo_details_lot_no", "(`lot_no`)");
+        AddIndexIfMissing(connection, "release_production_order_details", "ix_rpo_details_project_no", "(`project_no`)");
+        AddIndexIfMissing(connection, "release_production_order_details", "ix_rpo_details_project", "(`project_master_id`)");
+    }
+
+    private static void EnsureProductionOperatorSchema(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "production_work_order_operators"))
+        {
+            return;
+        }
+
+        AddColumnIfMissing(connection, "production_work_order_operators", "production_active_operator_id", "BIGINT NULL");
+        AddColumnIfMissing(connection, "production_work_order_operators", "shift_master_id", "INT NULL");
+        AddColumnIfMissing(connection, "production_work_order_operators", "is_active", "TINYINT(1) NOT NULL DEFAULT 1");
+        AddColumnIfMissing(connection, "production_work_order_operators", "scanned_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        AddColumnIfMissing(connection, "production_work_order_operators", "removed_at", "DATETIME NULL");
+        AddIndexIfMissing(connection, "production_work_order_operators", "ix_production_wo_operators_active", "(`production_work_order_id`, `is_active`)");
+        AddIndexIfMissing(connection, "production_work_order_operators", "ix_production_wo_operators_active_operator", "(`production_active_operator_id`)");
+        AddIndexIfMissing(connection, "production_work_order_operators", "ix_production_wo_operators_shift", "(`shift_master_id`)");
+    }
+
+    private static void EnsureProductionActivityLogSchema(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "production_activity_logs"))
+        {
+            return;
+        }
+
+        AddColumnIfMissing(connection, "production_activity_logs", "user_id", "INT NULL");
+        AddColumnIfMissing(connection, "production_activity_logs", "remarks", "TEXT NULL");
+        AddColumnIfMissing(connection, "production_activity_logs", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        AddIndexIfMissing(connection, "production_activity_logs", "ix_production_activity_logs_user", "(`user_id`)");
     }
 
     private static void DropLegacyProductionLineMaster(System.Data.Common.DbConnection connection)
@@ -327,6 +461,30 @@ public static class ServiceRegistration
         AddParameter(command, "@tableName", tableName);
         AddParameter(command, "@indexName", indexName);
         return Convert.ToInt32(command.ExecuteScalar()) > 0;
+    }
+
+    private static void AddColumnIfMissing(
+        System.Data.Common.DbConnection connection,
+        string tableName,
+        string columnName,
+        string definition)
+    {
+        if (!ColumnExists(connection, tableName, columnName))
+        {
+            ExecuteNonQuery(connection, $"ALTER TABLE `{tableName}` ADD COLUMN `{columnName}` {definition};");
+        }
+    }
+
+    private static void AddIndexIfMissing(
+        System.Data.Common.DbConnection connection,
+        string tableName,
+        string indexName,
+        string columns)
+    {
+        if (!IndexExists(connection, tableName, indexName))
+        {
+            ExecuteNonQuery(connection, $"ALTER TABLE `{tableName}` ADD INDEX `{indexName}` {columns};");
+        }
     }
 
     private static void ExecuteNonQuery(System.Data.Common.DbConnection connection, string sql)
