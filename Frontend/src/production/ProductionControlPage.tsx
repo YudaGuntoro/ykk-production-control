@@ -12,7 +12,6 @@ const scanButtonClass =
 
 const activeStatuses = new Set(["WAITING", "IN_PROGRESS"]);
 const statusOptions: Array<ProductionWorkOrderStatus | "ALL"> = ["ALL", "WAITING", "IN_PROGRESS", "FINISH"];
-const selectedAreaStorageKey = "production-control-selected-area-code";
 
 function isActiveOrder(order: ProductionWorkOrder) {
   return activeStatuses.has(order.status);
@@ -52,6 +51,8 @@ export default function ProductionControlPage() {
   const [confirmRemoveShiftOperators, setConfirmRemoveShiftOperators] = useState(false);
   const [operatorPendingRemove, setOperatorPendingRemove] = useState<ProductionActiveOperator | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [cancelFinishReason, setCancelFinishReason] = useState("");
+  const [cancelFinishModalOpen, setCancelFinishModalOpen] = useState(false);
 
   const load = useCallback(async (preferredId?: number, nextStatusFilter = statusFilter) => {
     try {
@@ -88,16 +89,12 @@ export default function ProductionControlPage() {
 
   const loadAreaMasters = useCallback(async () => {
     try {
-      const areas = await apiGet<AreaMaster[]>("/api/production/area-master?page=1&pageSize=100&isActive=true");
-      setAreaMasters(areas);
-
-      if (typeof window !== "undefined") {
-        const storedAreaCode = window.localStorage.getItem(selectedAreaStorageKey) ?? "";
-        const storedArea = areas.find((area) => area.area_code === storedAreaCode);
-        setSelectedAreaMasterId(storedArea ? String(storedArea.id) : "");
-      }
+      const areas = await apiGet<AreaMaster[]>("/api/production/line-master?page=1&pageSize=100&isActive=true");
+      const sortedAreas = [...areas].sort((left, right) => left.id - right.id);
+      setAreaMasters(sortedAreas);
+      setSelectedAreaMasterId(sortedAreas[0] ? String(sortedAreas[0].id) : "");
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load area master." });
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load line master." });
     }
   }, []);
 
@@ -114,6 +111,13 @@ export default function ProductionControlPage() {
   const activeOperators = activeSummary?.operators ?? [];
   const activeOperatorIds = activeOperators.map((operator) => operator.id).join("-");
   const activeOrders = useMemo(() => orders.filter(isActiveOrder), [orders]);
+  const selectedAreaMaster = useMemo(
+    () => areaMasters.find((area) => String(area.id) === selectedAreaMasterId) ?? null,
+    [areaMasters, selectedAreaMasterId],
+  );
+  const selectedAreaText = selectedAreaMaster
+    ? [selectedAreaMaster.line_no, selectedAreaMaster.line_name].filter(Boolean).join(" - ")
+    : "";
   const debouncedOrderNumberFilter = useDebouncedValue(orderNumberFilter, 300);
   const visibleOrders = useMemo(() => {
     const keyword = debouncedOrderNumberFilter.trim().toLowerCase();
@@ -122,8 +126,8 @@ export default function ProductionControlPage() {
     }
 
     return orders.filter((order) =>
-      order.order_number.toLowerCase().includes(keyword) ||
-      order.cutting_list_no.toLowerCase().includes(keyword),
+      (order.lot_no || "").toLowerCase().includes(keyword) ||
+      order.order_number.toLowerCase().includes(keyword),
     );
   }, [debouncedOrderNumberFilter, orders]);
   const runningOrders = useMemo(
@@ -156,19 +160,19 @@ export default function ProductionControlPage() {
     event.preventDefault();
     const code = orderNumberCode.trim();
     if (!code) {
-      setMessage({ kind: "error", text: "Input order number first." });
+      setMessage({ kind: "error", text: "Input Lot No first." });
       return;
     }
 
     setBusy(true);
     setMessage(null);
     try {
-      const order = await apiPost<ProductionWorkOrder>("/api/production/work-orders/scan", { order_number: code });
+      const order = await apiPost<ProductionWorkOrder>("/api/production/work-orders/scan", { lot_no: code });
       setOrderNumberCode("");
       setStatusFilter("ALL");
       await refreshFromResponse(order, "Active order selected.", "ALL");
     } catch (err) {
-      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load order number." });
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to load Lot No." });
     } finally {
       setBusy(false);
     }
@@ -229,24 +233,6 @@ export default function ProductionControlPage() {
     setSelectedId(orderId);
   }
 
-  function selectAreaMaster(value: string) {
-    setSelectedAreaMasterId(value);
-
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (value) {
-      const selectedArea = areaMasters.find((area) => String(area.id) === value);
-      if (selectedArea) {
-        window.localStorage.setItem(selectedAreaStorageKey, selectedArea.area_code);
-      }
-      return;
-    }
-
-    window.localStorage.removeItem(selectedAreaStorageKey);
-  }
-
   function openDetail(orderId: number) {
     setSelectedId(orderId);
     setDetailOpen(true);
@@ -283,7 +269,7 @@ export default function ProductionControlPage() {
   function startBlockedReason() {
     if (!selected) return "Pilih Order Number terlebih dahulu.";
     if (activeOperators.length < 1) return "Tidak boleh Start karena belum ada operator aktif. Scan minimal 1 operator terlebih dahulu.";
-    if (!selectedAreaMasterId) return "Pilih area terlebih dahulu sebelum Start.";
+    if (!selectedAreaMasterId) return "Line kerja belum tersedia. Tambahkan Line Master terlebih dahulu.";
     if (selected.status === "IN_PROGRESS") return "Tidak boleh Start karena Order Number sudah berjalan.";
     if (selected.status === "FINISH") return "Tidak boleh Start karena Order Number sudah finish.";
     return null;
@@ -311,6 +297,20 @@ export default function ProductionControlPage() {
 
     setMessage({ kind: "error", text: reason });
     return true;
+  }
+
+  async function submitCancelFinish(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = cancelFinishReason.trim();
+
+    if (!reason) {
+      setMessage({ kind: "error", text: "Alasan cancel wajib diisi." });
+      return;
+    }
+
+    await action("cancel-finish", { remarks: reason }, "Finish canceled.");
+    setCancelFinishReason("");
+    setCancelFinishModalOpen(false);
   }
 
   function keepShiftOperators() {
@@ -371,6 +371,45 @@ export default function ProductionControlPage() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {cancelFinishModalOpen ? (
+        <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-slate-950/50 px-4">
+          <form className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" onSubmit={(event) => void submitCancelFinish(event)}>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">Cancel Finish</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Masukkan alasan sebelum membatalkan finish order.</p>
+            <label className="mt-5 block">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Reason</span>
+              <textarea
+                autoFocus
+                className="mt-2 min-h-28 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                onChange={(event) => setCancelFinishReason(event.target.value)}
+                placeholder="Silahkan input alasan cancel"
+                value={cancelFinishReason}
+              />
+            </label>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                className="h-10 rounded-md bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 disabled:bg-rose-900 disabled:text-rose-50 disabled:opacity-100"
+                disabled={busy}
+                type="submit"
+              >
+                Submit
+              </button>
+              <button
+                className="h-10 rounded-md border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200"
+                disabled={busy}
+                onClick={() => {
+                  setCancelFinishModalOpen(false);
+                  setCancelFinishReason("");
+                }}
+                type="button"
+              >
+                Batal
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 
@@ -437,17 +476,17 @@ export default function ProductionControlPage() {
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-0 divide-y divide-slate-100 dark:divide-slate-800 xl:grid-cols-[1fr_1fr_0.8fr] xl:divide-x xl:divide-y-0">
           <form className="p-5" onSubmit={(event) => void scanOrderNumber(event)}>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Order Number / Cutting List</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Lot No</label>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row">
               <input
                 autoFocus
                 className={inputClass}
                 onChange={(event) => setOrderNumberCode(event.target.value)}
-                placeholder="Order number or CL-YKK-001"
+                placeholder="Scan / type Lot No"
                 value={orderNumberCode}
               />
               <button className={scanButtonClass} disabled={busy} type="submit">
-                Order Number
+                Lot No
               </button>
             </div>
           </form>
@@ -470,18 +509,13 @@ export default function ProductionControlPage() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             <div className="p-5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area Kerja</label>
-              <select
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line Area</label>
+              <input
                 className={`${inputClass} mt-3`}
-                disabled={busy || !areaMasters.length}
-                onChange={(event) => selectAreaMaster(event.target.value)}
-                value={selectedAreaMasterId}
-              >
-                <option value="">Pilih Area</option>
-                {areaMasters.map((area) => (
-                  <option key={area.id} value={area.id}>{area.area_name}</option>
-                ))}
-              </select>
+                disabled
+                placeholder="Line belum tersedia"
+                value={selectedAreaText}
+              />
               <p className="mt-2 text-xs text-slate-400 dark:text-slate-300">Dipakai saat Start Order Number.</p>
             </div>
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
@@ -548,12 +582,12 @@ export default function ProductionControlPage() {
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">
-              Order Number
+              Lot No / Order Number
               <div className="mt-2 flex gap-2">
                 <input
                   className="h-9 w-full min-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 sm:w-[280px]"
                   onChange={(event) => setOrderNumberFilter(event.target.value)}
-                  placeholder="Scan / type order number"
+                  placeholder="Scan / type Lot No or order number"
                   value={orderNumberFilter}
                 />
                 {orderNumberFilter ? (
@@ -561,7 +595,7 @@ export default function ProductionControlPage() {
                     className="h-9 w-9 rounded-md border border-slate-200 text-xs font-black text-slate-500 hover:border-[#0799c9] hover:text-[#0799c9] dark:border-slate-700 dark:text-slate-300"
                     onClick={() => setOrderNumberFilter("")}
                     type="button"
-                    aria-label="Clear order number filter"
+                    aria-label="Clear Lot No filter"
                   >
                     X
                   </button>
@@ -583,12 +617,11 @@ export default function ProductionControlPage() {
           </div>
         </div>
         <div className="overflow-x-auto p-5">
-          <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left">
+          <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left">
             <thead className="text-[11px] uppercase tracking-wider text-white">
               <tr>
-                <th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Order Number / Cutting List</th>
-                <th className="bg-[#0799c9] px-4 py-3">Product</th>
-                <th className="bg-[#0799c9] px-4 py-3">Area</th>
+                <th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Lot No / Order Number</th>
+                <th className="bg-[#0799c9] px-4 py-3">Line</th>
                 <th className="bg-[#0799c9] px-4 py-3">Operators</th>
                 <th className="bg-[#0799c9] px-4 py-3">Status</th>
                 <th className="rounded-r-lg bg-[#0799c9] px-5 py-3 text-right">Action</th>
@@ -607,14 +640,10 @@ export default function ProductionControlPage() {
                     tabIndex={0}
                   >
                     <td className="px-5 py-4">
-                      <p className="font-bold text-slate-900 dark:text-white">{order.order_number}</p>
-                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">{order.cutting_list_no}</p>
+                      <p className="font-bold text-slate-900 dark:text-white">{order.lot_no || "-"}</p>
+                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">{order.order_number}</p>
                     </td>
-                    <td className="px-4 py-4">
-                      <p className="font-semibold text-slate-700 dark:text-slate-200">{order.product_name}</p>
-                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">{order.line_code} / {order.product_code}</p>
-                    </td>
-                    <td className="px-4 py-4 text-xs font-semibold text-slate-500 dark:text-slate-300">{order.area_name || "-"}</td>
+                    <td className="px-4 py-4 text-xs font-semibold text-slate-500 dark:text-slate-300">{order.line_name || "-"}</td>
                     <td className="px-4 py-4">
                       <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                         {order.operators?.length ?? 0} operator
@@ -641,7 +670,7 @@ export default function ProductionControlPage() {
             <div className="flex shrink-0 flex-col gap-1.5 bg-[#0799c9] px-4 py-2.5 text-white sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xs font-bold text-white">Control {selected.order_number}</h2>
-                <p className="mt-0.5 text-[10px] font-semibold text-cyan-50">{selected.cutting_list_no} / {selected.product_name}</p>
+                <p className="mt-0.5 text-[10px] font-semibold text-cyan-50">{selected.lot_no || "-"}</p>
               </div>
               <button className="flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-black text-white/80 hover:bg-white/15 hover:text-white" onClick={() => setDetailOpen(false)} type="button" aria-label="Close detail">
                 X
@@ -662,21 +691,12 @@ export default function ProductionControlPage() {
                   <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.order_number}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 dark:text-slate-300">Cutting List</p>
-                  <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.cutting_list_no}</p>
-                </div>
-                <div>
                   <p className="text-xs text-slate-400 dark:text-slate-300">Line</p>
                   <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.line_code}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 dark:text-slate-300">Product</p>
-                  <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.product_name}</p>
-                  <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-300">{selected.product_code}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 dark:text-slate-300">Area</p>
-                  <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.area_name || "-"}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-300">Line</p>
+                  <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.line_name || "-"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 dark:text-slate-300">Work Shift</p>
@@ -761,7 +781,7 @@ export default function ProductionControlPage() {
                 disabled={busy}
                 onClick={() => {
                   if (showBlockedAction(startBlockedReason())) return;
-                  void action("start", { area_master_id: Number(selectedAreaMasterId) }, "Start timestamp saved.");
+                  void action("start", { line_master_id: Number(selectedAreaMasterId) }, "Start timestamp saved.");
                 }}
                 type="button"
               >
@@ -785,7 +805,7 @@ export default function ProductionControlPage() {
                 disabled={busy}
                 onClick={() => {
                   if (showBlockedAction(cancelFinishBlockedReason())) return;
-                  void action("cancel-finish", undefined, "Finish canceled.");
+                  setCancelFinishModalOpen(true);
                 }}
                 type="button"
               >

@@ -4,6 +4,8 @@ import {
   BoltIcon,
   DocsIcon,
   GridIcon,
+  ListIcon,
+  PlugInIcon,
 } from "../icons/index";
 
 export type NavSubItem = {
@@ -36,16 +38,26 @@ export const navItems: NavItem[] = [
     name: "Master Data",
     subItems: [
       { name: "Shift", path: "/shift-master" },
-      { name: "Area", path: "/area-master" },
+      { name: "Line", path: "/line-master" },
       { name: "Operator List", path: "/pic-cards" },
     ],
+  },
+  {
+    icon: <ListIcon />,
+    name: "Log",
+    path: "/log",
   },
   {
     icon: <DocsIcon />,
     name: "Production Activity",
     subItems: [
       { name: "Production Activity", path: "/production-history" },
-      { name: "Cutting List History", path: "/cutting-lists" },
+      { name: "Production History", path: "/cutting-lists" },
     ],
+  },
+  {
+    icon: <PlugInIcon />,
+    name: "Setting",
+    path: "/production-setting",
   },
 ];

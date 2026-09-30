@@ -15,7 +15,10 @@ public class ProductionControlDbContext : DbContext
     public DbSet<PicCard> PicCards => Set<PicCard>();
     public DbSet<ShiftMaster> ShiftMasters => Set<ShiftMaster>();
     public DbSet<AreaMaster> AreaMasters => Set<AreaMaster>();
-    public DbSet<CuttingList> CuttingLists => Set<CuttingList>();
+    public DbSet<ProjectMaster> ProjectMasters => Set<ProjectMaster>();
+    public DbSet<UnitMaster> UnitMasters => Set<UnitMaster>();
+    public DbSet<ProductionIntegrationSetting> ProductionIntegrationSettings => Set<ProductionIntegrationSetting>();
+    public DbSet<ReleaseProductionOrderDetail> ReleaseProductionOrderDetails => Set<ReleaseProductionOrderDetail>();
     public DbSet<ProductionWorkOrder> ProductionWorkOrders => Set<ProductionWorkOrder>();
     public DbSet<ProductionWorkOrderOperator> ProductionWorkOrderOperators => Set<ProductionWorkOrderOperator>();
     public DbSet<ProductionWorkOrderOperatorSnapshot> ProductionWorkOrderOperatorSnapshots => Set<ProductionWorkOrderOperatorSnapshot>();
@@ -89,10 +92,10 @@ public class ProductionControlDbContext : DbContext
 
         modelBuilder.Entity<AreaMaster>(entity =>
         {
-            entity.ToTable("area_master");
+            entity.ToTable("line_master");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.AreaCode).HasColumnName("area_code").HasMaxLength(50).IsRequired();
-            entity.Property(x => x.AreaName).HasColumnName("area_name").HasMaxLength(150).IsRequired();
+            entity.Property(x => x.AreaCode).HasColumnName("line_no").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.AreaName).HasColumnName("line_name").HasMaxLength(150).IsRequired();
             entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(255);
             entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -102,23 +105,68 @@ public class ProductionControlDbContext : DbContext
             entity.HasIndex(x => new { x.IsActive, x.AreaName });
         });
 
-        modelBuilder.Entity<CuttingList>(entity =>
+        modelBuilder.Entity<ProjectMaster>(entity =>
         {
-            entity.ToTable("cutting_lists");
+            entity.ToTable("project_master");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.CuttingListNo).HasColumnName("cutting_list_no").HasMaxLength(80).IsRequired();
-            entity.Property(x => x.ProductCode).HasColumnName("product_code").HasMaxLength(80).IsRequired();
-            entity.Property(x => x.ProductName).HasColumnName("product_name").HasMaxLength(200).IsRequired();
-            entity.Property(x => x.LineCode).HasColumnName("line_code").HasMaxLength(50).IsRequired();
-            entity.Property(x => x.PlannedQty).HasColumnName("planned_qty");
-            entity.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(20).IsRequired();
-            entity.Property(x => x.PlanDate).HasColumnName("plan_date");
-            entity.Property(x => x.StatusMasterId).HasColumnName("status_master_id");
+            entity.Property(x => x.ProjectNo).HasColumnName("project_no").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProjectName).HasColumnName("project_name").HasMaxLength(200).IsRequired();
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
-            entity.HasOne(x => x.StatusMaster).WithMany().HasForeignKey(x => x.StatusMasterId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(x => x.CuttingListNo).IsUnique();
-            entity.HasIndex(x => new { x.PlanDate, x.LineCode });
-            entity.HasIndex(x => x.StatusMasterId);
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasIndex(x => x.ProjectNo).IsUnique();
+        });
+
+        modelBuilder.Entity<UnitMaster>(entity =>
+        {
+            entity.ToTable("unit_master");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UnitCode).HasColumnName("unit_code").HasMaxLength(20).IsRequired();
+            entity.Property(x => x.UnitName).HasColumnName("unit_name").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(255);
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasIndex(x => x.UnitCode).IsUnique();
+            entity.HasIndex(x => x.UnitName).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.UnitName });
+        });
+
+        modelBuilder.Entity<ProductionIntegrationSetting>(entity =>
+        {
+            entity.ToTable("production_integration_settings");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SettingKey).HasColumnName("setting_key").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.BaseUrl).HasColumnName("base_url").HasMaxLength(500).IsRequired();
+            entity.Property(x => x.EndpointPath).HasColumnName("endpoint_path").HasMaxLength(255).IsRequired();
+            entity.Property(x => x.FilterFieldName).HasColumnName("filter_field_name").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Top).HasColumnName("top");
+            entity.Property(x => x.Skip).HasColumnName("skip");
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasIndex(x => x.SettingKey).IsUnique();
+        });
+
+        modelBuilder.Entity<ReleaseProductionOrderDetail>(entity =>
+        {
+            entity.ToTable("release_production_order_details");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProductionWorkOrderId).HasColumnName("production_work_order_id");
+            entity.Property(x => x.OrderNo).HasColumnName("order_no").HasMaxLength(80);
+            entity.Property(x => x.LotNo).HasColumnName("lot_no").HasMaxLength(80);
+            entity.Property(x => x.ProjectNo).HasColumnName("project_no").HasMaxLength(80);
+            entity.Property(x => x.ProjectMasterId).HasColumnName("project_master_id");
+            entity.Property(x => x.Weight).HasColumnName("weight").HasPrecision(12, 3);
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasOne(x => x.ProductionWorkOrder).WithOne(x => x.ReleaseProductionOrderDetail).HasForeignKey<ReleaseProductionOrderDetail>(x => x.ProductionWorkOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ProjectMaster).WithMany().HasForeignKey(x => x.ProjectMasterId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => x.ProductionWorkOrderId).IsUnique();
+            entity.HasIndex(x => x.OrderNo);
+            entity.HasIndex(x => x.LotNo);
+            entity.HasIndex(x => x.ProjectNo);
+            entity.HasIndex(x => x.ProjectMasterId);
         });
 
         modelBuilder.Entity<ProductionWorkOrder>(entity =>
@@ -126,11 +174,10 @@ public class ProductionControlDbContext : DbContext
             entity.ToTable("production_work_orders");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrderNumber).HasColumnName("order_number").HasMaxLength(80).IsRequired();
-            entity.Property(x => x.CuttingListId).HasColumnName("cutting_list_id");
-            entity.Property(x => x.PicCardId).HasColumnName("pic_card_id");
             entity.Property(x => x.ShiftMasterId).HasColumnName("shift_master_id");
-            entity.Property(x => x.AreaMasterId).HasColumnName("area_master_id");
+            entity.Property(x => x.AreaMasterId).HasColumnName("line_master_id");
             entity.Property(x => x.LineCode).HasColumnName("line_code").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PlanDate).HasColumnName("plan_date");
             entity.Property(x => x.TargetQty).HasColumnName("target_qty");
             entity.Property(x => x.ActualQty).HasColumnName("actual_qty");
             entity.Property(x => x.RejectQty).HasColumnName("reject_qty");
@@ -139,8 +186,6 @@ public class ProductionControlDbContext : DbContext
             entity.Property(x => x.CompletedAt).HasColumnName("completed_at");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
-            entity.HasOne(x => x.CuttingList).WithMany().HasForeignKey(x => x.CuttingListId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(x => x.PicCard).WithMany().HasForeignKey(x => x.PicCardId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.ShiftMaster).WithMany().HasForeignKey(x => x.ShiftMasterId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.AreaMaster).WithMany().HasForeignKey(x => x.AreaMasterId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.StatusMaster).WithMany().HasForeignKey(x => x.StatusMasterId).OnDelete(DeleteBehavior.Restrict);
@@ -217,13 +262,14 @@ public class ProductionControlDbContext : DbContext
             entity.ToTable("production_activity_logs");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ProductionWorkOrderId).HasColumnName("production_work_order_id");
-            entity.Property(x => x.PicCardId).HasColumnName("pic_card_id");
+            entity.Property(x => x.UserId).HasColumnName("user_id");
             entity.Property(x => x.ActivityType).HasColumnName("activity_type").HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.Remarks).HasColumnName("remarks").HasColumnType("text");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.HasOne(x => x.ProductionWorkOrder).WithMany(x => x.ActivityLogs).HasForeignKey(x => x.ProductionWorkOrderId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(x => x.PicCard).WithMany().HasForeignKey(x => x.PicCardId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => new { x.ProductionWorkOrderId, x.CreatedAt });
+            entity.HasIndex(x => x.UserId);
         });
     }
 }

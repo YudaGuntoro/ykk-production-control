@@ -6,10 +6,6 @@ export type ProductionWorkOrderStatus =
 export type ProductionWorkOrder = {
   id: number;
   order_number: string;
-  cutting_list_id: number;
-  cutting_list_no: string;
-  product_code: string;
-  product_name: string;
   pic_card_id?: number | null;
   pic_name?: string | null;
   employee_no?: string | null;
@@ -18,9 +14,9 @@ export type ProductionWorkOrder = {
   work_shift_code?: string | null;
   work_shift_name?: string | null;
   work_shift_type?: string | null;
-  area_master_id?: number | null;
-  area_code?: string | null;
-  area_name?: string | null;
+  line_master_id?: number | null;
+  line_no?: string | null;
+  line_name?: string | null;
   operators: ProductionOperator[];
   line_code: string;
   actual_qty: number;
@@ -30,6 +26,9 @@ export type ProductionWorkOrder = {
   started_at?: string | null;
   completed_at?: string | null;
   updated_at: string;
+  lot_no?: string | null;
+  project_no?: string | null;
+  weight?: number | null;
 };
 
 export type ProductionOperator = {
@@ -74,8 +73,17 @@ export type ProductionDashboardSummary = {
   completed_work_orders: number;
   actual_qty: number;
   reject_qty: number;
-  work_orders: ProductionWorkOrder[];
+  work_orders: ProductionDashboardWorkOrder[];
   daily_shift_outputs: ProductionDashboardShiftOutput[];
+};
+
+export type ProductionDashboardWorkOrder = {
+  id: number;
+  project_no?: string | null;
+  order_no?: string | null;
+  lot_no?: string | null;
+  weight?: number | null;
+  status: ProductionWorkOrderStatus;
 };
 
 export type ProductionDashboardShiftOutput = {
@@ -89,9 +97,6 @@ export type ProductionDashboardShiftOutput = {
 
 export type CuttingList = {
   id: number;
-  cutting_list_no: string;
-  product_code: string;
-  product_name: string;
   line_code: string;
   planned_qty: number;
   unit: string;
@@ -104,6 +109,9 @@ export type CuttingList = {
   operators?: ProductionOperator[];
   start_operators?: ProductionOperator[];
   finish_operators?: ProductionOperator[];
+  lot_no?: string | null;
+  project_no?: string | null;
+  weight?: number | null;
 };
 
 export type PicCard = {
@@ -131,8 +139,8 @@ export type ShiftMaster = {
 
 export type AreaMaster = {
   id: number;
-  area_code: string;
-  area_name: string;
+  line_no: string;
+  line_name: string;
   description?: string | null;
   is_active: boolean;
   created_at: string;
@@ -143,8 +151,14 @@ export type ProductionActivityLog = {
   id: number;
   production_work_order_id: number;
   order_number?: string | null;
+  user_id?: number | null;
+  username?: string | null;
   pic_name?: string | null;
+  employee_no?: string | null;
   activity_type: string;
   remarks?: string | null;
+  lot_no?: string | null;
+  project_no?: string | null;
+  weight?: number | null;
   created_at: string;
 };

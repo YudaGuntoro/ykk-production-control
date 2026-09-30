@@ -2,10 +2,10 @@
 
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 import type { ProductionDashboardShiftOutput, ProductionDashboardSummary } from "./types";
-import { formatDateTime, ProductionDatePicker, StatusBadge, todayParam } from "./ui";
+import { ProductionDatePicker, StatusBadge, todayParam } from "./ui";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -139,6 +139,10 @@ function FinishedShiftChart({ items, loading }: { items: ProductionDashboardShif
   );
 }
 
+function formatWeight(value?: number | null) {
+  return typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "-";
+}
+
 export default function ProductionDashboard() {
   const [date, setDate] = useState(todayParam());
   const [data, setData] = useState<ProductionDashboardSummary | null>(null);
@@ -161,8 +165,6 @@ export default function ProductionDashboard() {
     void load();
   }, [load]);
 
-  const lineCount = useMemo(() => new Set((data?.work_orders ?? []).map((item) => item.line_code)).size, [data]);
-
   return (
     <div className="space-y-6">
       <section className="rounded-lg border-2 border-[#0799c9] bg-white px-6 py-5 text-slate-900 shadow-sm dark:border-[#0799c9] dark:bg-slate-900 dark:text-white sm:px-7">
@@ -178,7 +180,7 @@ export default function ProductionDashboard() {
       {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error} <button className="font-bold underline" onClick={() => void load()}>Try again</button></div> : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard accent="bg-sky-500" label="Total Work Order" note={`${lineCount} production line`} value={loading ? "..." : data?.total_work_orders ?? 0} />
+        <MetricCard accent="bg-sky-500" label="Total Work Order" note="Selected production date" value={loading ? "..." : data?.total_work_orders ?? 0} />
         <MetricCard accent="bg-blue-500" label="Running" note="Active work orders" value={loading ? "..." : data?.running_work_orders ?? 0} />
         <MetricCard accent="bg-amber-400" label="Waiting" note="Operator / start production" value={loading ? "..." : data?.waiting_work_orders ?? 0} />
         <MetricCard accent="bg-emerald-500" label="Finished" note="Finished today" value={loading ? "..." : data?.completed_work_orders ?? 0} />
@@ -192,42 +194,16 @@ export default function ProductionDashboard() {
             <div><h2 className="font-bold text-slate-900 dark:text-white">Production Line Status</h2><p className="mt-1 text-xs text-slate-400">Work order status today</p></div>
           </div>
           <div className="overflow-x-auto p-5">
-            <table className="w-full min-w-[960px] border-separate border-spacing-0 text-left">
-              <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Work Order</th><th className="bg-[#0799c9] px-4 py-3">Line / Product</th><th className="bg-[#0799c9] px-4 py-3">Operator</th><th className="bg-[#0799c9] px-4 py-3">Operators</th><th className="bg-[#0799c9] px-4 py-3">Actual</th><th className="bg-[#0799c9] px-4 py-3">Started</th><th className="bg-[#0799c9] px-4 py-3">Finished</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
+            <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
+              <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Project No</th><th className="bg-[#0799c9] px-4 py-3">Order No</th><th className="bg-[#0799c9] px-4 py-3">Lot No</th><th className="bg-[#0799c9] px-4 py-3 text-right">Weight</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {(data?.work_orders ?? []).map((order) => {
                   return (
                     <tr className="text-sm" key={order.id}>
-                      <td className="px-5 py-4"><p className="font-bold text-slate-800 dark:text-white">{order.order_number}</p><p className="mt-1 text-xs text-slate-400">{order.cutting_list_no}</p></td>
-                      <td className="px-4 py-4"><p className="font-semibold text-slate-700 dark:text-slate-200">{order.line_code}</p><p className="mt-1 max-w-[220px] truncate text-xs text-slate-400">{order.product_name}</p></td>
-                      <td className="px-4 py-4">
-                        {order.operators?.length ? (
-                          <div className="space-y-1">
-                            {order.operators.map((operator) => (
-                              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200" key={operator.id}>
-                                {operator.full_name} <span className="text-slate-400">/ {operator.shift}</span>
-                              </p>
-                            ))}
-                          </div>
-                        ) : (
-                          <>
-                            <p className="font-semibold text-slate-700 dark:text-slate-200">Not scanned</p>
-                            <p className="mt-1 text-xs text-slate-400">-</p>
-                          </>
-                        )}
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{order.operators?.length ?? 0} operator</span>
-                      </td>
-                      <td className="px-4 py-4">
-                        {order.completed_at ? (
-                          <div><p className="text-sm font-black text-slate-900 dark:text-white">{order.actual_qty.toLocaleString("en-US")}</p><p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Reject {order.reject_qty.toLocaleString("en-US")}</p></div>
-                        ) : (
-                          <span className="text-sm font-bold text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-xs font-semibold text-slate-500">{formatDateTime(order.started_at)}</td>
-                      <td className="px-4 py-4 text-xs font-semibold text-slate-500">{formatDateTime(order.completed_at)}</td>
+                      <td className="px-5 py-4 font-bold text-slate-800 dark:text-white">{order.project_no || "-"}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-700 dark:text-slate-200">{order.order_no || "-"}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-700 dark:text-slate-200">{order.lot_no || "-"}</td>
+                      <td className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-300">{formatWeight(order.weight)}</td>
                       <td className="px-5 py-4"><StatusBadge status={order.status} /></td>
                     </tr>
                   );

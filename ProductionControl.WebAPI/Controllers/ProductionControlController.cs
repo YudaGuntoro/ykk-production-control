@@ -1,7 +1,10 @@
 using ProductionControl.Domain.Production;
 using ProductionControl.Persistence.Context;
+using ProductionControl.WebAPI.Reports;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace ProductionControl.WebAPI.Controllers;
 
@@ -10,8 +13,20 @@ namespace ProductionControl.WebAPI.Controllers;
 public class ProductionControlController : ApiControllerBase
 {
     private readonly ProductionControlDbContext _db;
+    private readonly IWebHostEnvironment _environment;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private const string ShiageLotNoSettingKey = "shiage_lot_no";
+    private const string InternalSystemAuthSettingKey = "internal_system_auth";
 
-    public ProductionControlController(ProductionControlDbContext db) => _db = db;
+    public ProductionControlController(
+        ProductionControlDbContext db,
+        IWebHostEnvironment environment,
+        IHttpClientFactory httpClientFactory)
+    {
+        _db = db;
+        _environment = environment;
+        _httpClientFactory = httpClientFactory;
+    }
 
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard([FromQuery] DateTime? date)
@@ -19,7 +34,7 @@ public class ProductionControlController : ApiControllerBase
         var selectedDate = (date ?? DateTime.Today).Date;
         var nextDate = selectedDate.AddDays(1);
         var orders = await WorkOrderQuery()
-            .Where(x => x.CuttingList!.PlanDate >= selectedDate && x.CuttingList.PlanDate < nextDate)
+            .Where(x => x.PlanDate >= selectedDate && x.PlanDate < nextDate)
             .OrderBy(x => x.LineCode)
             .ThenBy(x => x.OrderNumber)
             .ToListAsync();
@@ -36,7 +51,7 @@ public class ProductionControlController : ApiControllerBase
             CompletedWorkOrders = orders.Count(x => x.Status == ProductionWorkOrderStatus.FINISH),
             ActualQty = actualQty,
             RejectQty = completedOrders.Sum(x => x.RejectQty),
-            WorkOrders = orders.Select(ToResponse).ToList(),
+            WorkOrders = orders.Select(ToDashboardResponse).ToList(),
             DailyShiftOutputs = dailyShiftOutputs
         });
     }
@@ -55,7 +70,7 @@ public class ProductionControlController : ApiControllerBase
         {
             var selectedDate = date.Value.Date;
             var nextDate = selectedDate.AddDays(1);
-            query = query.Where(x => x.CuttingList!.PlanDate >= selectedDate && x.CuttingList.PlanDate < nextDate);
+            query = query.Where(x => x.PlanDate >= selectedDate && x.PlanDate < nextDate);
         }
 
         var items = await query.OrderByDescending(x => x.UpdatedAt).ToListAsync();
@@ -67,15 +82,14 @@ public class ProductionControlController : ApiControllerBase
     {
         try
         {
-            var cuttingList = await _db.CuttingLists.FindAsync(request.CuttingListId);
-            if (cuttingList is null)
-            {
-                return ApiNotFound("Cutting list was not found.");
-            }
-
             if (string.IsNullOrWhiteSpace(request.OrderNumber))
             {
                 throw new ArgumentException("Order number is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.LineCode))
+            {
+                throw new ArgumentException("Line is required.");
             }
 
             if (await _db.ProductionWorkOrders.AnyAsync(x => x.OrderNumber == request.OrderNumber.Trim()))
@@ -83,20 +97,17 @@ public class ProductionControlController : ApiControllerBase
                 throw new InvalidOperationException("Order number is already used.");
             }
 
-            if (await _db.ProductionWorkOrders.AnyAsync(x => x.CuttingListId == cuttingList.Id))
-            {
-                throw new InvalidOperationException("This cutting list already has a work order.");
-            }
-
             var order = new ProductionWorkOrder
             {
                 OrderNumber = request.OrderNumber.Trim(),
-                CuttingListId = cuttingList.Id,
-                LineCode = string.IsNullOrWhiteSpace(request.LineCode) ? cuttingList.LineCode : request.LineCode.Trim(),
+                LineCode = request.LineCode.Trim(),
+                PlanDate = request.PlanDate?.Date ?? DateTime.Today,
                 TargetQty = 0,
                 Status = ProductionWorkOrderStatus.WAITING
             };
             _db.ProductionWorkOrders.Add(order);
+            await _db.SaveChangesAsync();
+            await UpsertReleaseProductionOrderDetail(order.Id, request.OrderNumber, request.LotNo, request.ProjectNo, request.Weight);
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
             return ApiCreated(ToResponse(order), "Work order created successfully.");
@@ -112,48 +123,63 @@ public class ProductionControlController : ApiControllerBase
     {
         try
         {
-            var code = request.OrderNumber.Trim();
+            var code = (request.LotNo ?? request.OrderNumber).Trim();
             if (string.IsNullOrWhiteSpace(code))
             {
-                throw new ArgumentException("Order number is required.");
+                throw new ArgumentException("Lot No is required.");
             }
 
-            var existingOrder = await _db.ProductionWorkOrders
-                .Include(x => x.CuttingList)
-                .Include(x => x.PicCard)
-                .Include(x => x.Operators)
-                    .ThenInclude(x => x.PicCard)
-                .FirstOrDefaultAsync(x => x.OrderNumber == code || x.CuttingList!.CuttingListNo == code);
+            var existingOrder = await WorkOrderQuery()
+                .FirstOrDefaultAsync(x =>
+                    x.OrderNumber == code ||
+                    x.ReleaseProductionOrderDetail != null && x.ReleaseProductionOrderDetail.LotNo == code);
 
             if (existingOrder is not null)
             {
-                AddLog(existingOrder.Id, existingOrder.PicCardId, ProductionActivityType.CUTTING_LIST_SCAN, $"Order number scan {code}");
+                AddLog(existingOrder.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {code}");
                 await _db.SaveChangesAsync();
-                return ApiOk(ToResponse(existingOrder), "Order number found.");
+                return ApiOk(ToResponse(existingOrder), "Lot No found.");
             }
 
-            var cuttingList = await _db.CuttingLists.FirstOrDefaultAsync(x => x.CuttingListNo == code);
-            if (cuttingList is null)
+            var shiageResult = await FetchShiageLotNo(code);
+            if (shiageResult is null)
             {
-                return ApiNotFound("Order number / cutting list was not found.");
+                return ApiNotFound("Lot No / order number was not found.");
             }
 
-            var order = new ProductionWorkOrder
-            {
-                OrderNumber = cuttingList.CuttingListNo,
-                CuttingListId = cuttingList.Id,
-                LineCode = cuttingList.LineCode,
-                TargetQty = 0,
-                Status = ProductionWorkOrderStatus.WAITING
-            };
+            var orderNumber = NormalizeText(shiageResult.OrderNo) ?? NormalizeText(shiageResult.LotNo) ?? code;
+            var lotNo = NormalizeText(shiageResult.LotNo) ?? code;
+            var order = await WorkOrderQuery()
+                .FirstOrDefaultAsync(x =>
+                    x.OrderNumber == orderNumber ||
+                    x.ReleaseProductionOrderDetail != null && x.ReleaseProductionOrderDetail.LotNo == lotNo);
 
-            _db.ProductionWorkOrders.Add(order);
+            if (order is null)
+            {
+                order = new ProductionWorkOrder
+                {
+                    OrderNumber = orderNumber,
+                    LineCode = NormalizeLineCode(shiageResult.Line),
+                    PlanDate = shiageResult.CutPlan ?? DateTime.Today,
+                    TargetQty = 0,
+                    Status = ProductionWorkOrderStatus.WAITING
+                };
+                _db.ProductionWorkOrders.Add(order);
+                await _db.SaveChangesAsync();
+            }
+
+            await UpsertReleaseProductionOrderDetail(
+                order.Id,
+                orderNumber,
+                lotNo,
+                shiageResult.ProjectNo,
+                shiageResult.Weight,
+                shiageResult.ProjectName);
+            AddLog(order.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {code}");
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
-            AddLog(order.Id, null, ProductionActivityType.CUTTING_LIST_SCAN, $"Order number scan {code}");
-            await _db.SaveChangesAsync();
 
-            return ApiCreated(ToResponse(order), "Work order created from the cutting list.");
+            return ApiCreated(ToResponse(order), "Lot No found from Shiage and registered.");
         }
         catch (Exception ex)
         {
@@ -203,10 +229,9 @@ public class ProductionControlController : ApiControllerBase
                 activeOperator.ScannedAt = DateTime.Now;
             }
 
-            order.PicCardId ??= pic.Id;
             order.UpdatedAt = DateTime.Now;
             pic.LastScannedAt = DateTime.Now;
-            AddLog(order.Id, pic.Id, ProductionActivityType.PIC_SCAN, $"Operator {pic.EmployeeNo} - {pic.FullName}");
+            AddLog(order.Id, ProductionActivityType.PIC_SCAN, $"Operator {pic.EmployeeNo} - {pic.FullName}");
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
             return ApiOk(ToResponse(order), "Operator added successfully.");
@@ -215,6 +240,127 @@ public class ProductionControlController : ApiControllerBase
         {
             return ApiBadRequest(ex);
         }
+    }
+
+    [HttpGet("settings/shiage-lot-no")]
+    public async Task<IActionResult> GetShiageLotNoSetting()
+    {
+        var setting = await GetIntegrationSettingEntity(ShiageLotNoSettingKey);
+        return ApiOk(ToSettingResponse(setting));
+    }
+
+    [HttpPut("settings/shiage-lot-no")]
+    public async Task<IActionResult> SaveShiageLotNoSetting([FromBody] SaveProductionIntegrationSettingRequest request)
+    {
+        return await SaveIntegrationSetting(ShiageLotNoSettingKey, request, "Setting endpoint Shiage berhasil disimpan.");
+    }
+
+    [HttpGet("settings/integration/{settingKey}")]
+    public async Task<IActionResult> GetIntegrationSetting(string settingKey)
+    {
+        try
+        {
+            var normalizedSettingKey = NormalizeSettingKey(settingKey);
+            var setting = await GetIntegrationSettingEntity(normalizedSettingKey);
+            return ApiOk(ToSettingResponse(setting));
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpPut("settings/integration/{settingKey}")]
+    public async Task<IActionResult> SaveIntegrationSetting(string settingKey, [FromBody] SaveProductionIntegrationSettingRequest request)
+    {
+        try
+        {
+            var normalizedSettingKey = NormalizeSettingKey(settingKey);
+            return await SaveIntegrationSetting(normalizedSettingKey, request, "Setting endpoint berhasil disimpan.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    private async Task<IActionResult> SaveIntegrationSetting(
+        string settingKey,
+        SaveProductionIntegrationSettingRequest request,
+        string successMessage)
+    {
+        try
+        {
+            var baseUrl = NormalizeBaseUrl(request.BaseUrl);
+            var endpointPath = NormalizeEndpointPath(request.EndpointPath, GetDefaultEndpointPath(settingKey));
+            var filterFieldName = NormalizeText(request.FilterFieldName) ?? GetDefaultFilterFieldName(settingKey);
+
+            if (baseUrl is null)
+            {
+                throw new ArgumentException("Base URL is required.");
+            }
+
+            var setting = await _db.ProductionIntegrationSettings
+                .FirstOrDefaultAsync(x => x.SettingKey == settingKey);
+            var now = DateTime.Now;
+
+            if (setting is null)
+            {
+                setting = new ProductionIntegrationSetting
+                {
+                    SettingKey = settingKey,
+                    CreatedAt = now
+                };
+                _db.ProductionIntegrationSettings.Add(setting);
+            }
+
+            setting.BaseUrl = baseUrl;
+            setting.EndpointPath = endpointPath;
+            setting.FilterFieldName = filterFieldName;
+            setting.Top = Math.Clamp(request.Top, 1, 1000);
+            setting.Skip = Math.Max(0, request.Skip);
+            setting.IsActive = request.IsActive;
+            setting.UpdatedAt = now;
+
+            await _db.SaveChangesAsync();
+            return ApiOk(ToSettingResponse(setting), successMessage);
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpGet("fab-shiage-prod-res")]
+    public async Task<IActionResult> FabShiageProductionResults([FromQuery] string? lotNo, [FromQuery] int top = 50, [FromQuery] int skip = 0)
+    {
+        top = Math.Clamp(top, 1, 1000);
+        skip = Math.Max(skip, 0);
+
+        var normalizedLotNo = NormalizeText(lotNo);
+        var query = _db.ReleaseProductionOrderDetails.AsNoTracking()
+            .Include(x => x.ProductionWorkOrder)
+            .AsQueryable();
+
+        if (normalizedLotNo is not null)
+        {
+            query = query.Where(x => x.LotNo == normalizedLotNo);
+        }
+
+        var rows = await query
+            .OrderBy(x => x.LotNo)
+            .Skip(skip)
+            .Take(top)
+            .Select(x => new FabShiageProductionResultResponse
+            {
+                ProjectNo = x.ProjectNo,
+                OrderNo = x.OrderNo ?? (x.ProductionWorkOrder == null ? null : x.ProductionWorkOrder.OrderNumber),
+                LotNo = x.LotNo,
+                Weight = x.Weight
+            })
+            .ToListAsync();
+
+        return ApiOk(rows);
     }
 
     [HttpPost("work-orders/{id:int}/operators/{operatorId:long}/remove")]
@@ -243,13 +389,7 @@ public class ProductionControlController : ApiControllerBase
             activeOperator.RemovedAt = DateTime.Now;
             order.UpdatedAt = DateTime.Now;
 
-            var nextPrimaryOperator = order.Operators
-                .Where(x => x.IsActive && x.Id != operatorId)
-                .OrderBy(x => x.ScannedAt)
-                .FirstOrDefault();
-            order.PicCardId = nextPrimaryOperator?.PicCardId;
-
-            AddLog(order.Id, activeOperator.PicCardId, ProductionActivityType.OPERATOR_REMOVE, $"Operator {activeOperator.PicCard?.EmployeeNo} - {activeOperator.PicCard?.FullName} removed");
+            AddLog(order.Id, ProductionActivityType.OPERATOR_REMOVE, $"Operator {activeOperator.PicCard?.EmployeeNo} - {activeOperator.PicCard?.FullName} removed");
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
             return ApiOk(ToResponse(order), "Operator removed successfully.");
@@ -293,16 +433,16 @@ public class ProductionControlController : ApiControllerBase
             }
 
             var currentShift = await GetCurrentShift();
-            var areaMasterId = request?.AreaMasterId ?? order.AreaMasterId;
-            if (!areaMasterId.HasValue)
+            var lineMasterId = request?.AreaMasterId ?? order.AreaMasterId;
+            if (!lineMasterId.HasValue)
             {
-                throw new InvalidOperationException("Pilih area sebelum Start Order Number.");
+                throw new InvalidOperationException("Pilih line sebelum Start Order Number.");
             }
 
-            var area = await _db.AreaMasters.FirstOrDefaultAsync(x => x.Id == areaMasterId.Value && x.IsActive);
-            if (area is null)
+            var line = await _db.AreaMasters.FirstOrDefaultAsync(x => x.Id == lineMasterId.Value && x.IsActive);
+            if (line is null)
             {
-                throw new InvalidOperationException("Area tidak ditemukan atau sudah tidak aktif.");
+                throw new InvalidOperationException("Line tidak ditemukan atau sudah tidak aktif.");
             }
 
             var startedAt = order.StartedAt ?? DateTime.Now;
@@ -311,15 +451,14 @@ public class ProductionControlController : ApiControllerBase
             order.Status = ProductionWorkOrderStatus.IN_PROGRESS;
             order.StartedAt = startedAt;
             order.ShiftMasterId = currentShift?.Id;
-            order.AreaMasterId = area.Id;
-            order.AreaMaster = area;
+            order.AreaMasterId = line.Id;
+            order.AreaMaster = line;
             order.UpdatedAt = DateTime.Now;
-            order.CuttingList!.Status = CuttingListStatus.IN_PROGRESS;
             await ReplaceOperatorSnapshots(
                 order.Id,
                 ProductionOperatorSnapshotType.START,
                 CreateSnapshotsFromActiveOperators(order.Id, ProductionOperatorSnapshotType.START, activeOperators, currentShift, startedAt));
-            AddLog(order.Id, order.PicCardId, ProductionActivityType.WORK_START, $"Production work started at {area.AreaName}");
+            AddLog(order.Id, ProductionActivityType.WORK_START, $"Production work started at {line.AreaName}");
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
             return ApiOk(ToResponse(order), "Work order started.");
@@ -357,7 +496,7 @@ public class ProductionControlController : ApiControllerBase
             order.ActualQty = actualQty;
             order.RejectQty = rejectQty;
             order.UpdatedAt = DateTime.Now;
-            AddLog(order.Id, order.PicCardId, ProductionActivityType.PRODUCTION_UPDATE, request.Remarks ?? $"Actual {actualQty}, reject {rejectQty}");
+            AddLog(order.Id, ProductionActivityType.PRODUCTION_UPDATE, request.Remarks ?? $"Actual {actualQty}, reject {rejectQty}");
             await _db.SaveChangesAsync();
             return ApiOk(ToResponse(order), "Production output updated.");
         }
@@ -400,9 +539,8 @@ public class ProductionControlController : ApiControllerBase
             order.Status = ProductionWorkOrderStatus.FINISH;
             order.CompletedAt = completedAt;
             order.UpdatedAt = DateTime.Now;
-            order.CuttingList!.Status = CuttingListStatus.FINISH;
             await SaveFinishOperatorSnapshots(order, completedAt);
-            AddLog(order.Id, order.PicCardId, ProductionActivityType.WORK_COMPLETE, request?.Remarks ?? "Production work completed");
+            AddLog(order.Id, ProductionActivityType.WORK_COMPLETE, request?.Remarks ?? "Production work completed");
             await _db.SaveChangesAsync();
             return ApiOk(ToResponse(order), "Work order completed.");
         }
@@ -432,9 +570,8 @@ public class ProductionControlController : ApiControllerBase
             order.Status = ProductionWorkOrderStatus.FINISH;
             order.CompletedAt = completedAt;
             order.UpdatedAt = DateTime.Now;
-            order.CuttingList!.Status = CuttingListStatus.FINISH;
             await SaveFinishOperatorSnapshots(order, completedAt);
-            AddLog(order.Id, order.PicCardId, ProductionActivityType.WORK_COMPLETE, "Production work finished");
+            AddLog(order.Id, ProductionActivityType.WORK_COMPLETE, "Production work finished");
             await _db.SaveChangesAsync();
             return ApiOk(ToResponse(order), "Work order finished.");
         }
@@ -445,7 +582,7 @@ public class ProductionControlController : ApiControllerBase
     }
 
     [HttpPost("work-orders/{id:int}/cancel-finish")]
-    public async Task<IActionResult> CancelFinish(int id)
+    public async Task<IActionResult> CancelFinish(int id, [FromBody] UpdateProductionRequest? request)
     {
         try
         {
@@ -463,9 +600,8 @@ public class ProductionControlController : ApiControllerBase
             order.Status = ProductionWorkOrderStatus.IN_PROGRESS;
             order.CompletedAt = null;
             order.UpdatedAt = DateTime.Now;
-            order.CuttingList!.Status = CuttingListStatus.IN_PROGRESS;
             await ClearOperatorSnapshots(order.Id, ProductionOperatorSnapshotType.FINISH);
-            AddLog(order.Id, order.PicCardId, ProductionActivityType.WORK_RESUME, "Production finish cancelled");
+            AddLog(order.Id, ProductionActivityType.FINISH_CANCELLED, request?.Remarks ?? "Production finish cancelled");
             await _db.SaveChangesAsync();
             return ApiOk(ToResponse(order), "Finish canceled.");
         }
@@ -478,28 +614,100 @@ public class ProductionControlController : ApiControllerBase
     [HttpGet("cutting-lists")]
     public async Task<IActionResult> CuttingLists([FromQuery] DateTime? date)
     {
-        var query = _db.CuttingLists.AsNoTracking();
+        return ApiOk(await GetProductionHistoryRows(null, date, null, null, null));
+    }
+
+    [HttpGet("cutting-lists/export")]
+    public async Task<IActionResult> ExportCuttingLists(
+        [FromQuery] CuttingListStatus? status,
+        [FromQuery] DateTime? date,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var rows = await GetProductionHistoryRows(status, date, startDate, endDate, null);
+        var exporter = new ProductionHistoryExcelExporter();
+        var fileContent = exporter.Export(rows, new ProductionHistoryExportContext(DateTime.Now, "Production History"));
+        var fileName = $"Production-History-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+
+        return File(
+            fileContent,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
+    [HttpGet("cutting-lists/{id:int}/export")]
+    public async Task<IActionResult> ExportCuttingListDetail(int id)
+    {
+        var rows = await GetProductionHistoryRows(null, null, null, null, id);
+        if (rows.Count == 0)
+        {
+            return ApiNotFound("Production history was not found.");
+        }
+
+        var row = rows[0];
+        var exporter = new ProductionHistoryExcelExporter();
+        var fileContent = exporter.ExportDetail(row, new ProductionHistoryExportContext(DateTime.Now, "Production History Detail"));
+        var fileName = $"Production-History-{SanitizeFileName(row.LotNo ?? row.OrderNumber ?? row.Id.ToString())}-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+
+        return File(
+            fileContent,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
+    private async Task<List<CuttingListResponse>> GetProductionHistoryRows(
+        CuttingListStatus? status,
+        DateTime? date,
+        DateTime? startDate,
+        DateTime? endDate,
+        int? cuttingListId)
+    {
+        var query = WorkOrderWithSnapshotsQuery();
+        if (cuttingListId.HasValue)
+        {
+            query = query.Where(x => x.Id == cuttingListId.Value);
+        }
+
         if (date.HasValue)
         {
             var selectedDate = date.Value.Date;
             var nextDate = selectedDate.AddDays(1);
-            query = query.Where(x => x.PlanDate >= selectedDate && x.PlanDate < nextDate);
+            query = query.Where(x => x.CreatedAt >= selectedDate && x.CreatedAt < nextDate);
+        }
+        else
+        {
+            if (startDate.HasValue)
+            {
+                query = query.Where(x => x.CreatedAt >= startDate.Value.Date);
+            }
+
+            if (endDate.HasValue)
+            {
+                query = query.Where(x => x.CreatedAt < endDate.Value.Date.AddDays(1));
+            }
         }
 
-        var cuttingLists = await query.OrderByDescending(x => x.PlanDate).ThenBy(x => x.LineCode).ToListAsync();
-        var cuttingListIds = cuttingLists.Select(x => x.Id).ToList();
-        List<ProductionWorkOrder> workOrders = cuttingListIds.Count == 0
-            ? []
-            : await WorkOrderWithSnapshotsQuery()
-                .Where(x => cuttingListIds.Contains(x.CuttingListId))
-                .ToListAsync();
-        var workOrderByCuttingList = workOrders
-            .GroupBy(x => x.CuttingListId)
-            .ToDictionary(x => x.Key, x => x.OrderByDescending(order => order.UpdatedAt).First());
+        if (status.HasValue)
+        {
+            var statusMasterId = ProductionStatusMaster.ToId(status.Value);
+            query = query.Where(x => x.StatusMasterId == statusMasterId);
+        }
 
-        return ApiOk(cuttingLists
-            .Select(x => ToCuttingListResponse(x, workOrderByCuttingList.GetValueOrDefault(x.Id)))
-            .ToList());
+        var workOrders = await query
+            .OrderByDescending(x => x.PlanDate)
+            .ThenBy(x => x.LineCode)
+            .ToListAsync();
+
+        return workOrders
+            .Select(ToProductionHistoryResponse)
+            .ToList();
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(value.Select(ch => invalidChars.Contains(ch) ? '-' : ch).ToArray());
+        return string.IsNullOrWhiteSpace(sanitized) ? "Detail" : sanitized;
     }
 
     [HttpPost("cutting-lists")]
@@ -507,33 +715,31 @@ public class ProductionControlController : ApiControllerBase
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(request.CuttingListNo) ||
-                string.IsNullOrWhiteSpace(request.ProductCode) ||
-                string.IsNullOrWhiteSpace(request.ProductName) ||
-                string.IsNullOrWhiteSpace(request.LineCode))
+            if (string.IsNullOrWhiteSpace(request.LineCode))
             {
-                throw new ArgumentException("Cutting list number, product, and line are required.");
+                throw new ArgumentException("Line is required.");
             }
 
-            if (await _db.CuttingLists.AnyAsync(x => x.CuttingListNo == request.CuttingListNo.Trim()))
+            var orderNumber = NormalizeText(request.LotNo) ?? $"WO-{DateTime.Now:yyyyMMddHHmmssfff}";
+            if (await _db.ProductionWorkOrders.AnyAsync(x => x.OrderNumber == orderNumber))
             {
-                throw new InvalidOperationException("Cutting list number is already used.");
+                throw new InvalidOperationException("Order number is already used.");
             }
 
-            var item = new CuttingList
+            var item = new ProductionWorkOrder
             {
-                CuttingListNo = request.CuttingListNo.Trim(),
-                ProductCode = request.ProductCode.Trim(),
-                ProductName = request.ProductName.Trim(),
+                OrderNumber = orderNumber,
                 LineCode = request.LineCode.Trim(),
-                PlannedQty = Math.Max(0, request.PlannedQty),
-                Unit = string.IsNullOrWhiteSpace(request.Unit) ? "PCS" : request.Unit.Trim(),
                 PlanDate = request.PlanDate.Date,
-                Status = CuttingListStatus.WAITING
+                TargetQty = Math.Max(0, request.PlannedQty),
+                Status = ProductionWorkOrderStatus.WAITING
             };
-            _db.CuttingLists.Add(item);
+            _db.ProductionWorkOrders.Add(item);
             await _db.SaveChangesAsync();
-            return ApiCreated(item, "Cutting list created successfully.");
+            await UpsertReleaseProductionOrderDetail(item.Id, orderNumber, request.LotNo, request.ProjectNo, request.Weight);
+            await _db.SaveChangesAsync();
+            await ReloadWorkOrder(item);
+            return ApiCreated(ToProductionHistoryResponse(item), "Production work order created successfully.");
         }
         catch (Exception ex)
         {
@@ -804,8 +1010,8 @@ public class ProductionControlController : ApiControllerBase
         }
     }
 
-    [HttpGet("area-master")]
-    public async Task<IActionResult> AreaMaster([FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] bool? isActive = null)
+    [HttpGet("line-master")]
+    public async Task<IActionResult> LineMaster([FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] bool? isActive = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -828,7 +1034,7 @@ public class ProductionControlController : ApiControllerBase
         {
             success = true,
             statusCode = StatusCodes.Status200OK,
-            message = "Get area master success.",
+            message = "Get line master success.",
             data = items,
             pagination = new
             {
@@ -842,48 +1048,48 @@ public class ProductionControlController : ApiControllerBase
         });
     }
 
-    [HttpPost("area-master")]
-    public async Task<IActionResult> CreateAreaMaster([FromBody] SaveAreaMasterRequest request)
+    [HttpPost("line-master")]
+    public async Task<IActionResult> CreateLineMaster([FromBody] SaveAreaMasterRequest request)
     {
         try
         {
-            var areaCode = request.AreaCode.Trim().ToUpperInvariant();
-            var areaName = request.AreaName.Trim();
+            var lineNo = request.RawLineNo.Trim().ToUpperInvariant();
+            var lineName = request.RawLineName.Trim();
 
-            if (string.IsNullOrWhiteSpace(areaCode))
+            if (string.IsNullOrWhiteSpace(lineNo))
             {
-                throw new ArgumentException("Area code is required.");
+                throw new ArgumentException("Line No is required.");
             }
 
-            if (string.IsNullOrWhiteSpace(areaName))
+            if (string.IsNullOrWhiteSpace(lineName))
             {
-                throw new ArgumentException("Area name is required.");
+                throw new ArgumentException("Line Name is required.");
             }
 
-            if (await _db.AreaMasters.AnyAsync(x => x.AreaCode == areaCode))
+            if (await _db.AreaMasters.AnyAsync(x => x.AreaCode == lineNo))
             {
-                throw new InvalidOperationException("Area code is already used.");
+                throw new InvalidOperationException("Line No is already used.");
             }
 
-            if (await _db.AreaMasters.AnyAsync(x => x.AreaName == areaName))
+            if (await _db.AreaMasters.AnyAsync(x => x.AreaName == lineName))
             {
-                throw new InvalidOperationException("Area name is already used.");
+                throw new InvalidOperationException("Line Name is already used.");
             }
 
             var now = DateTime.Now;
-            var area = new AreaMaster
+            var line = new AreaMaster
             {
-                AreaCode = areaCode,
-                AreaName = areaName,
+                AreaCode = lineNo,
+                AreaName = lineName,
                 Description = NormalizeText(request.Description),
                 IsActive = request.IsActive,
                 CreatedAt = now,
                 UpdatedAt = now
             };
 
-            _db.AreaMasters.Add(area);
+            _db.AreaMasters.Add(line);
             await _db.SaveChangesAsync();
-            return ApiCreated(area, "Area master created successfully.");
+            return ApiCreated(line, "Line master created successfully.");
         }
         catch (Exception ex)
         {
@@ -891,48 +1097,184 @@ public class ProductionControlController : ApiControllerBase
         }
     }
 
-    [HttpPut("area-master/{id:int}")]
-    public async Task<IActionResult> UpdateAreaMaster(int id, [FromBody] SaveAreaMasterRequest request)
+    [HttpPut("line-master/{id:int}")]
+    public async Task<IActionResult> UpdateLineMaster(int id, [FromBody] SaveAreaMasterRequest request)
     {
         try
         {
             var area = await _db.AreaMasters.FindAsync(id);
             if (area is null)
             {
-                return ApiNotFound("Area master was not found.");
+                return ApiNotFound("Line master was not found.");
             }
 
-            var areaCode = request.AreaCode.Trim().ToUpperInvariant();
-            var areaName = request.AreaName.Trim();
+            var lineNo = request.RawLineNo.Trim().ToUpperInvariant();
+            var lineName = request.RawLineName.Trim();
 
-            if (string.IsNullOrWhiteSpace(areaCode))
+            if (string.IsNullOrWhiteSpace(lineNo))
             {
-                throw new ArgumentException("Area code is required.");
+                throw new ArgumentException("Line No is required.");
             }
 
-            if (string.IsNullOrWhiteSpace(areaName))
+            if (string.IsNullOrWhiteSpace(lineName))
             {
-                throw new ArgumentException("Area name is required.");
+                throw new ArgumentException("Line Name is required.");
             }
 
-            if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaCode == areaCode))
+            if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaCode == lineNo))
             {
-                throw new InvalidOperationException("Area code is already used.");
+                throw new InvalidOperationException("Line No is already used.");
             }
 
-            if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaName == areaName))
+            if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaName == lineName))
             {
-                throw new InvalidOperationException("Area name is already used.");
+                throw new InvalidOperationException("Line Name is already used.");
             }
 
-            area.AreaCode = areaCode;
-            area.AreaName = areaName;
+            area.AreaCode = lineNo;
+            area.AreaName = lineName;
             area.Description = NormalizeText(request.Description);
             area.IsActive = request.IsActive;
             area.UpdatedAt = DateTime.Now;
 
             await _db.SaveChangesAsync();
-            return ApiOk(area, "Area master updated successfully.");
+            return ApiOk(area, "Line master updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpGet("unit-master")]
+    public async Task<IActionResult> UnitMaster([FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] bool? isActive = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _db.UnitMasters.AsNoTracking().AsQueryable();
+        if (isActive.HasValue)
+        {
+            query = query.Where(x => x.IsActive == isActive.Value);
+        }
+
+        var totalData = await query.CountAsync();
+        var totalPage = totalData == 0 ? 0 : (int)Math.Ceiling(totalData / (double)pageSize);
+        var items = await query
+            .OrderBy(x => x.UnitName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            success = true,
+            statusCode = StatusCodes.Status200OK,
+            message = "Get unit master success.",
+            data = items,
+            pagination = new
+            {
+                currentPage = page,
+                pageSize,
+                totalData,
+                totalPage,
+                hasPreviousPage = page > 1,
+                hasNextPage = page < totalPage
+            }
+        });
+    }
+
+    [HttpPost("unit-master")]
+    public async Task<IActionResult> CreateUnitMaster([FromBody] SaveUnitMasterRequest request)
+    {
+        try
+        {
+            var unitCode = request.UnitCode.Trim().ToUpperInvariant();
+            var unitName = request.UnitName.Trim();
+
+            if (string.IsNullOrWhiteSpace(unitCode))
+            {
+                throw new ArgumentException("Unit Code is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(unitName))
+            {
+                throw new ArgumentException("Unit Name is required.");
+            }
+
+            if (await _db.UnitMasters.AnyAsync(x => x.UnitCode == unitCode))
+            {
+                throw new InvalidOperationException("Unit Code is already used.");
+            }
+
+            if (await _db.UnitMasters.AnyAsync(x => x.UnitName == unitName))
+            {
+                throw new InvalidOperationException("Unit Name is already used.");
+            }
+
+            var now = DateTime.Now;
+            var unit = new UnitMaster
+            {
+                UnitCode = unitCode,
+                UnitName = unitName,
+                Description = NormalizeText(request.Description),
+                IsActive = request.IsActive,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            _db.UnitMasters.Add(unit);
+            await _db.SaveChangesAsync();
+            return ApiCreated(unit, "Unit master created successfully.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpPut("unit-master/{id:int}")]
+    public async Task<IActionResult> UpdateUnitMaster(int id, [FromBody] SaveUnitMasterRequest request)
+    {
+        try
+        {
+            var unit = await _db.UnitMasters.FindAsync(id);
+            if (unit is null)
+            {
+                return ApiNotFound("Unit master was not found.");
+            }
+
+            var unitCode = request.UnitCode.Trim().ToUpperInvariant();
+            var unitName = request.UnitName.Trim();
+
+            if (string.IsNullOrWhiteSpace(unitCode))
+            {
+                throw new ArgumentException("Unit Code is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(unitName))
+            {
+                throw new ArgumentException("Unit Name is required.");
+            }
+
+            if (await _db.UnitMasters.AnyAsync(x => x.Id != id && x.UnitCode == unitCode))
+            {
+                throw new InvalidOperationException("Unit Code is already used.");
+            }
+
+            if (await _db.UnitMasters.AnyAsync(x => x.Id != id && x.UnitName == unitName))
+            {
+                throw new InvalidOperationException("Unit Name is already used.");
+            }
+
+            unit.UnitCode = unitCode;
+            unit.UnitName = unitName;
+            unit.Description = NormalizeText(request.Description);
+            unit.IsActive = request.IsActive;
+            unit.UpdatedAt = DateTime.Now;
+
+            await _db.SaveChangesAsync();
+            return ApiOk(unit, "Unit master updated successfully.");
         }
         catch (Exception ex)
         {
@@ -941,16 +1283,14 @@ public class ProductionControlController : ApiControllerBase
     }
 
     [HttpGet("activity-logs")]
-    public async Task<IActionResult> ActivityLogs([FromQuery] int? workOrderId)
+    public async Task<IActionResult> ActivityLogs(
+        [FromQuery] int? workOrderId,
+        [FromQuery] DateTime? date,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
     {
-        var query = _db.ProductionActivityLogs.AsNoTracking()
-            .Include(x => x.ProductionWorkOrder)
-            .Include(x => x.PicCard)
-            .AsQueryable();
-        if (workOrderId.HasValue)
-        {
-            query = query.Where(x => x.ProductionWorkOrderId == workOrderId.Value);
-        }
+        var range = ResolveActivityLogDateRange(date, startDate, endDate, defaultToLastSevenDays: false);
+        var query = ApplyActivityLogFilters(ActivityLogReportQuery(), workOrderId, range.Start, range.EndExclusive);
 
         var logs = await query.OrderByDescending(x => x.CreatedAt).Take(250)
             .Select(x => new
@@ -958,21 +1298,169 @@ public class ProductionControlController : ApiControllerBase
                 id = x.Id,
                 production_work_order_id = x.ProductionWorkOrderId,
                 order_number = x.ProductionWorkOrder != null ? x.ProductionWorkOrder.OrderNumber : null,
-                pic_name = x.PicCard != null ? x.PicCard.FullName : null,
+                user_id = x.UserId,
+                username = x.User != null ? x.User.Username : null,
+                pic_name = x.User != null ? x.User.FullName : null,
+                employee_no = x.User != null ? x.User.Username : null,
                 activity_type = x.ActivityType,
                 remarks = x.Remarks,
+                lot_no = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null
+                    ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.LotNo
+                    : null,
+                project_no = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null
+                    ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.ProjectNo
+                    : null,
+                weight = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null
+                    ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.Weight
+                    : null,
                 created_at = x.CreatedAt
             })
             .ToListAsync();
         return ApiOk(logs);
     }
 
+    [HttpGet("activity-logs/export")]
+    public async Task<IActionResult> ExportActivityLogs(
+        [FromQuery] int? workOrderId,
+        [FromQuery] DateTime? date,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var range = ResolveActivityLogDateRange(date, startDate, endDate, defaultToLastSevenDays: true);
+        var logs = await ApplyActivityLogFilters(ActivityLogReportQuery(), workOrderId, range.Start, range.EndExclusive)
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
+            .Take(10000)
+            .ToListAsync();
+
+        var rows = logs.Select(ToActivityReportRow).ToList();
+        var exporter = new ProductionActivityExcelExporter(_environment.ContentRootPath);
+        var fileContent = exporter.Export(rows, new ProductionActivityReportContext(
+            range.DisplayStart,
+            range.DisplayEnd,
+            DateTime.Now));
+        var fileName = $"Production-Activity-{DateTime.Now:yyyyMMdd-HHmm}.xlsx";
+
+        return File(
+            fileContent,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
+    private IQueryable<ProductionActivityLog> ActivityLogReportQuery() =>
+        _db.ProductionActivityLogs.AsNoTracking()
+            .Include(x => x.ProductionWorkOrder!)
+                .ThenInclude(x => x.ShiftMaster)
+            .Include(x => x.ProductionWorkOrder!)
+                .ThenInclude(x => x.AreaMaster)
+            .Include(x => x.ProductionWorkOrder!)
+                .ThenInclude(x => x.ReleaseProductionOrderDetail)
+            .Include(x => x.User);
+
+    private static IQueryable<ProductionActivityLog> ApplyActivityLogFilters(
+        IQueryable<ProductionActivityLog> query,
+        int? workOrderId,
+        DateTime? start,
+        DateTime? endExclusive)
+    {
+        if (workOrderId.HasValue)
+        {
+            query = query.Where(x => x.ProductionWorkOrderId == workOrderId.Value);
+        }
+
+        if (start.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt >= start.Value);
+        }
+
+        if (endExclusive.HasValue)
+        {
+            query = query.Where(x => x.CreatedAt < endExclusive.Value);
+        }
+
+        return query;
+    }
+
+    private static ActivityLogDateRange ResolveActivityLogDateRange(
+        DateTime? date,
+        DateTime? startDate,
+        DateTime? endDate,
+        bool defaultToLastSevenDays)
+    {
+        var now = DateTime.Now;
+
+        if (date.HasValue)
+        {
+            var selectedDate = date.Value.Date;
+            return new ActivityLogDateRange(
+                selectedDate,
+                ResolveEndExclusive(selectedDate, now),
+                selectedDate,
+                selectedDate);
+        }
+
+        var start = startDate?.Date;
+        var endDisplay = endDate?.Date;
+
+        if (!start.HasValue && !endDisplay.HasValue && defaultToLastSevenDays)
+        {
+            start = now.Date.AddDays(-7);
+            endDisplay = now.Date;
+        }
+
+        if (start.HasValue && endDisplay.HasValue && endDisplay.Value < start.Value)
+        {
+            (start, endDisplay) = (endDisplay, start);
+        }
+
+        return new ActivityLogDateRange(
+            start,
+            endDisplay.HasValue ? ResolveEndExclusive(endDisplay.Value, now) : null,
+            start,
+            endDisplay);
+    }
+
+    private static DateTime ResolveEndExclusive(DateTime endDate, DateTime now) =>
+        endDate.Date >= now.Date ? now.AddSeconds(1) : endDate.Date.AddDays(1);
+
+    private static ProductionActivityReportRow ToActivityReportRow(ProductionActivityLog log)
+    {
+        var order = log.ProductionWorkOrder;
+        var rpo = order?.ReleaseProductionOrderDetail;
+        var user = log.User;
+        var shiftText = order?.ShiftMaster is null
+            ? "-"
+            : $"{order.ShiftMaster.ShiftCode} - {order.ShiftMaster.ShiftName}";
+
+        return new ProductionActivityReportRow(
+            log.CreatedAt,
+            order?.OrderNumber ?? $"Order #{log.ProductionWorkOrderId}",
+            rpo?.LotNo ?? "-",
+            rpo?.ProjectNo ?? "-",
+            rpo?.Weight,
+            order?.LineCode ?? "-",
+            order?.AreaMaster?.AreaName ?? "-",
+            shiftText,
+            user?.FullName ?? user?.Username ?? "System",
+            user?.Username ?? "-",
+            log.ActivityType.ToString().Replace("_", " "),
+            log.Remarks ?? "-",
+            order?.ActualQty ?? 0,
+            order?.RejectQty ?? 0,
+            order?.Status.ToString().Replace("_", " ") ?? "-");
+    }
+
+    private sealed record ActivityLogDateRange(
+        DateTime? Start,
+        DateTime? EndExclusive,
+        DateTime? DisplayStart,
+        DateTime? DisplayEnd);
+
     private IQueryable<ProductionWorkOrder> WorkOrderQuery() =>
         _db.ProductionWorkOrders.AsNoTracking()
-            .Include(x => x.CuttingList)
-            .Include(x => x.PicCard)
             .Include(x => x.ShiftMaster)
             .Include(x => x.AreaMaster)
+            .Include(x => x.ReleaseProductionOrderDetail)
             .Include(x => x.Operators)
                 .ThenInclude(x => x.PicCard)
             .Include(x => x.Operators)
@@ -987,10 +1475,9 @@ public class ProductionControlController : ApiControllerBase
 
     private Task<ProductionWorkOrder?> FindWorkOrder(int id) =>
         _db.ProductionWorkOrders
-            .Include(x => x.CuttingList)
-            .Include(x => x.PicCard)
             .Include(x => x.ShiftMaster)
             .Include(x => x.AreaMaster)
+            .Include(x => x.ReleaseProductionOrderDetail)
             .Include(x => x.Operators)
                 .ThenInclude(x => x.PicCard)
             .Include(x => x.Operators)
@@ -1006,10 +1493,9 @@ public class ProductionControlController : ApiControllerBase
 
     private async Task ReloadWorkOrder(ProductionWorkOrder order)
     {
-        await _db.Entry(order).Reference(x => x.CuttingList).LoadAsync();
-        await _db.Entry(order).Reference(x => x.PicCard).LoadAsync();
         await _db.Entry(order).Reference(x => x.ShiftMaster).LoadAsync();
         await _db.Entry(order).Reference(x => x.AreaMaster).LoadAsync();
+        await _db.Entry(order).Reference(x => x.ReleaseProductionOrderDetail).LoadAsync();
         _db.Entry(order).Collection(x => x.Operators).IsLoaded = false;
         await _db.Entry(order).Collection(x => x.Operators).LoadAsync();
         foreach (var workOrderOperator in order.Operators)
@@ -1019,16 +1505,287 @@ public class ProductionControlController : ApiControllerBase
         }
     }
 
-    private void AddLog(int workOrderId, int? picCardId, ProductionActivityType activityType, string? remarks)
+    private void AddLog(int workOrderId, ProductionActivityType activityType, string? remarks)
     {
         _db.ProductionActivityLogs.Add(new ProductionActivityLog
         {
             ProductionWorkOrderId = workOrderId,
-            PicCardId = picCardId,
+            UserId = GetCurrentUserId(),
             ActivityType = activityType,
             Remarks = remarks,
             CreatedAt = DateTime.Now
         });
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return int.TryParse(value, out var userId) ? userId : null;
+    }
+
+    private static ProductionIntegrationSettingResponse ToSettingResponse(ProductionIntegrationSetting setting) =>
+        new()
+        {
+            SettingKey = setting.SettingKey,
+            BaseUrl = setting.BaseUrl,
+            EndpointPath = setting.EndpointPath,
+            FilterFieldName = setting.FilterFieldName,
+            Top = setting.Top,
+            Skip = setting.Skip,
+            IsActive = setting.IsActive
+        };
+
+    private static string? NormalizeBaseUrl(string? value)
+    {
+        var normalized = NormalizeText(value)?.TrimEnd('/');
+        return normalized;
+    }
+
+    private static string NormalizeEndpointPath(string? value, string defaultEndpointPath = "/fab-shiage-prod-res/")
+    {
+        var normalized = NormalizeText(value) ?? defaultEndpointPath;
+        return normalized.StartsWith('/') ? normalized : $"/{normalized}";
+    }
+
+    private static string NormalizeSettingKey(string? value)
+    {
+        var normalized = NormalizeText(value)?.ToLowerInvariant();
+        if (normalized is null || normalized.Any(x => !char.IsLetterOrDigit(x) && x != '_' && x != '-'))
+        {
+            throw new ArgumentException("Setting key is invalid.");
+        }
+
+        return normalized;
+    }
+
+    private static string GetDefaultEndpointPath(string settingKey) => settingKey switch
+    {
+        ShiageLotNoSettingKey => "/fab-shiage-prod-res/",
+        InternalSystemAuthSettingKey => "/auth/login",
+        _ => "/"
+    };
+
+    private static string GetDefaultFilterFieldName(string settingKey) => settingKey switch
+    {
+        ShiageLotNoSettingKey => "LOT_NO",
+        _ => "-"
+    };
+
+    private static string NormalizeLineCode(string? value)
+    {
+        var normalized = NormalizeText(value) ?? "-";
+        return normalized.Length <= 50 ? normalized : normalized[..50];
+    }
+
+    private async Task<ProductionIntegrationSetting> GetShiageLotNoSettingEntity()
+    {
+        return await GetIntegrationSettingEntity(ShiageLotNoSettingKey);
+    }
+
+    private async Task<ProductionIntegrationSetting> GetIntegrationSettingEntity(string settingKey)
+    {
+        var setting = await _db.ProductionIntegrationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SettingKey == settingKey);
+
+        return setting ?? new ProductionIntegrationSetting
+        {
+            SettingKey = settingKey,
+            BaseUrl = string.Empty,
+            EndpointPath = GetDefaultEndpointPath(settingKey),
+            FilterFieldName = GetDefaultFilterFieldName(settingKey),
+            Top = 1,
+            Skip = 0,
+            IsActive = false
+        };
+    }
+
+    private async Task<ShiageLotNoResult?> FetchShiageLotNo(string lotNo)
+    {
+        var setting = await GetShiageLotNoSettingEntity();
+        if (!setting.IsActive || string.IsNullOrWhiteSpace(setting.BaseUrl))
+        {
+            return null;
+        }
+
+        var url = BuildShiageUrl(setting, lotNo);
+        using var response = await _httpClientFactory.CreateClient().GetAsync(url);
+        var content = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Shiage endpoint failed with status {(int)response.StatusCode}: {content}");
+        }
+
+        using var document = JsonDocument.Parse(content);
+        var data = ResolveShiageDataElement(document.RootElement);
+        return data.HasValue ? ToShiageLotNoResult(data.Value) : null;
+    }
+
+    private static string BuildShiageUrl(ProductionIntegrationSetting setting, string lotNo)
+    {
+        var baseUrl = NormalizeBaseUrl(setting.BaseUrl) ?? string.Empty;
+        var endpointPath = NormalizeEndpointPath(setting.EndpointPath);
+        var filterFieldName = NormalizeText(setting.FilterFieldName) ?? "LOT_NO";
+        var filterValue = lotNo.Replace("'", "''");
+        var query = new Dictionary<string, string>
+        {
+            ["$top"] = Math.Clamp(setting.Top, 1, 1000).ToString(),
+            ["$skip"] = Math.Max(0, setting.Skip).ToString(),
+            ["$filter"] = $"{filterFieldName} eq '{filterValue}'"
+        };
+        var queryString = string.Join("&", query.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
+
+        return $"{baseUrl}{endpointPath}?{queryString}";
+    }
+
+    private static JsonElement? ResolveShiageDataElement(JsonElement root)
+    {
+        var data = TryGetProperty(root, "data") ?? root;
+        if (data.ValueKind == JsonValueKind.Array)
+        {
+            return data.GetArrayLength() > 0 ? data[0] : null;
+        }
+
+        return data.ValueKind == JsonValueKind.Object ? data : null;
+    }
+
+    private static ShiageLotNoResult ToShiageLotNoResult(JsonElement data)
+    {
+        return new ShiageLotNoResult(
+            ProjectNo: GetJsonString(data, "PROJECT_NO"),
+            OrderNo: GetJsonString(data, "ORDER_NO"),
+            LotNo: GetJsonString(data, "LOT_NO"),
+            Weight: GetJsonDecimal(data, "WEIGHT"),
+            ProjectName: GetJsonString(data, "PROJECT_NAME"),
+            Line: GetJsonString(data, "LINE"),
+            CutPlan: GetJsonDate(data, "CUT_PLAN"));
+    }
+
+    private static JsonElement? TryGetProperty(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return property.Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetJsonString(JsonElement element, string name)
+    {
+        var value = TryGetProperty(element, name);
+        return value.HasValue && value.Value.ValueKind != JsonValueKind.Null
+            ? NormalizeText(value.Value.ToString())
+            : null;
+    }
+
+    private static decimal? GetJsonDecimal(JsonElement element, string name)
+    {
+        var value = TryGetProperty(element, name);
+        if (!value.HasValue || value.Value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (value.Value.ValueKind == JsonValueKind.Number && value.Value.TryGetDecimal(out var number))
+        {
+            return number;
+        }
+
+        return decimal.TryParse(value.Value.ToString(), out var parsed) ? parsed : null;
+    }
+
+    private static DateTime? GetJsonDate(JsonElement element, string name)
+    {
+        var value = GetJsonString(element, name);
+        return DateTime.TryParse(value, out var parsed) ? parsed.Date : null;
+    }
+
+    private sealed record ShiageLotNoResult(
+        string? ProjectNo,
+        string? OrderNo,
+        string? LotNo,
+        decimal? Weight,
+        string? ProjectName,
+        string? Line,
+        DateTime? CutPlan);
+
+    private async Task<int?> UpsertProjectMaster(string? projectNo, string? projectName)
+    {
+        var normalizedProjectNo = NormalizeText(projectNo);
+        if (normalizedProjectNo is null)
+        {
+            return null;
+        }
+
+        var normalizedProjectName = NormalizeText(projectName) ?? normalizedProjectNo;
+        var now = DateTime.Now;
+        var project = await _db.ProjectMasters.FirstOrDefaultAsync(x => x.ProjectNo == normalizedProjectNo);
+        if (project is null)
+        {
+            project = new ProjectMaster
+            {
+                ProjectNo = normalizedProjectNo,
+                CreatedAt = now
+            };
+            _db.ProjectMasters.Add(project);
+        }
+
+        project.ProjectName = normalizedProjectName;
+        project.IsActive = true;
+        project.UpdatedAt = now;
+        return project.Id;
+    }
+
+    private async Task UpsertReleaseProductionOrderDetail(
+        int workOrderId,
+        string? orderNo,
+        string? lotNo,
+        string? projectNo,
+        decimal? weight,
+        string? projectName = null)
+    {
+        var normalizedOrderNo = NormalizeText(orderNo);
+        var normalizedLotNo = NormalizeText(lotNo);
+        var normalizedProjectNo = NormalizeText(projectNo);
+        var normalizedWeight = weight.HasValue ? Math.Round(weight.Value, 3) : (decimal?)null;
+
+        if (normalizedOrderNo is null &&
+            normalizedLotNo is null &&
+            normalizedProjectNo is null &&
+            !normalizedWeight.HasValue)
+        {
+            return;
+        }
+
+        var detail = await _db.ReleaseProductionOrderDetails
+            .FirstOrDefaultAsync(x => x.ProductionWorkOrderId == workOrderId);
+        var now = DateTime.Now;
+
+        if (detail is null)
+        {
+            detail = new ReleaseProductionOrderDetail
+            {
+                ProductionWorkOrderId = workOrderId,
+                CreatedAt = now
+            };
+            _db.ReleaseProductionOrderDetails.Add(detail);
+        }
+
+        detail.OrderNo = normalizedOrderNo;
+        detail.LotNo = normalizedLotNo;
+        detail.ProjectNo = normalizedProjectNo;
+        detail.ProjectMasterId = await UpsertProjectMaster(normalizedProjectNo, projectName);
+        detail.Weight = normalizedWeight;
+        detail.UpdatedAt = now;
     }
 
     private async Task<List<ProductionDailyShiftOutput>> GetDailyShiftOutputs(DateTime selectedDate)
@@ -1253,7 +2010,6 @@ public class ProductionControlController : ApiControllerBase
             _db.ProductionWorkOrderOperators.Add(workOrderOperator);
         }
 
-        order.PicCardId = orderedOperators.FirstOrDefault()?.PicCardId ?? order.PicCardId;
     }
 
     private static ActiveOperatorSummaryResponse ToActiveOperatorSummary(
@@ -1289,37 +2045,36 @@ public class ProductionControlController : ApiControllerBase
         };
     }
 
-    private static CuttingListResponse ToCuttingListResponse(CuttingList item, ProductionWorkOrder? order)
+    private static CuttingListResponse ToProductionHistoryResponse(ProductionWorkOrder order)
     {
-        var activeOperators = order?.Operators
+        var rpo = order.ReleaseProductionOrderDetail;
+        var activeOperators = order.Operators
             .Where(x => x.IsActive && x.PicCard is not null)
             .OrderBy(x => x.ScannedAt)
-            .ToList() ?? [];
-        List<ProductionOperatorResponse> startOperators = order is null
-            ? []
-            : SnapshotOperatorResponses(order, ProductionOperatorSnapshotType.START, order.StartedAt);
-        List<ProductionOperatorResponse> finishOperators = order is null
-            ? []
-            : SnapshotOperatorResponses(order, ProductionOperatorSnapshotType.FINISH, order.CompletedAt);
+            .ToList();
+        List<ProductionOperatorResponse> startOperators =
+            SnapshotOperatorResponses(order, ProductionOperatorSnapshotType.START, order.StartedAt);
+        List<ProductionOperatorResponse> finishOperators =
+            SnapshotOperatorResponses(order, ProductionOperatorSnapshotType.FINISH, order.CompletedAt);
 
         return new CuttingListResponse
         {
-            Id = item.Id,
-            CuttingListNo = item.CuttingListNo,
-            ProductCode = item.ProductCode,
-            ProductName = item.ProductName,
-            LineCode = item.LineCode,
-            PlannedQty = item.PlannedQty,
-            Unit = item.Unit,
-            PlanDate = item.PlanDate,
-            Status = item.Status,
-            CreatedAt = item.CreatedAt,
-            OrderNumber = order?.OrderNumber,
-            StartedAt = order?.StartedAt,
-            CompletedAt = order?.CompletedAt,
-            Operators = order is null ? [] : ToOperatorResponses(order, activeOperators),
+            Id = order.Id,
+            LineCode = order.LineCode,
+            PlannedQty = order.TargetQty,
+            Unit = "PCS",
+            PlanDate = order.PlanDate,
+            Status = ProductionStatusMaster.ToCuttingListStatus(order.StatusMasterId),
+            CreatedAt = order.CreatedAt,
+            OrderNumber = order.OrderNumber,
+            StartedAt = order.StartedAt,
+            CompletedAt = order.CompletedAt,
+            Operators = ToOperatorResponses(order, activeOperators),
             StartOperators = startOperators,
-            FinishOperators = finishOperators
+            FinishOperators = finishOperators,
+            LotNo = rpo?.LotNo,
+            ProjectNo = rpo?.ProjectNo,
+            Weight = rpo?.Weight
         };
     }
 
@@ -1407,16 +2162,13 @@ public class ProductionControlController : ApiControllerBase
             .Where(x => x.IsActive)
             .OrderBy(x => x.ScannedAt)
             .ToList();
-        var primaryOperator = activeOperators.FirstOrDefault()?.PicCard ?? order.PicCard;
+        var primaryOperator = activeOperators.FirstOrDefault()?.PicCard;
+        var rpo = order.ReleaseProductionOrderDetail;
 
         return new ProductionWorkOrderResponse
         {
             Id = order.Id,
             OrderNumber = order.OrderNumber,
-            CuttingListId = order.CuttingListId,
-            CuttingListNo = order.CuttingList?.CuttingListNo ?? string.Empty,
-            ProductCode = order.CuttingList?.ProductCode ?? string.Empty,
-            ProductName = order.CuttingList?.ProductName ?? string.Empty,
             PicCardId = primaryOperator?.Id,
             PicName = primaryOperator?.FullName,
             EmployeeNo = primaryOperator?.EmployeeNo,
@@ -1449,10 +2201,28 @@ public class ProductionControlController : ApiControllerBase
             ActualQty = order.CompletedAt.HasValue ? order.ActualQty : 0,
             RejectQty = order.CompletedAt.HasValue ? order.RejectQty : 0,
             Status = order.Status,
-            PlanDate = order.CuttingList?.PlanDate ?? order.CreatedAt.Date,
+            PlanDate = order.PlanDate,
             StartedAt = order.StartedAt,
             CompletedAt = order.CompletedAt,
-            UpdatedAt = order.UpdatedAt
+            UpdatedAt = order.UpdatedAt,
+            LotNo = rpo?.LotNo,
+            ProjectNo = rpo?.ProjectNo,
+            Weight = rpo?.Weight
+        };
+    }
+
+    private static ProductionDashboardWorkOrderResponse ToDashboardResponse(ProductionWorkOrder order)
+    {
+        var rpo = order.ReleaseProductionOrderDetail;
+
+        return new ProductionDashboardWorkOrderResponse
+        {
+            Id = order.Id,
+            ProjectNo = rpo?.ProjectNo,
+            OrderNo = rpo?.OrderNo ?? order.OrderNumber,
+            LotNo = rpo?.LotNo,
+            Weight = rpo?.Weight,
+            Status = order.Status
         };
     }
 }

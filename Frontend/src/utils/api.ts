@@ -1,3 +1,5 @@
+import { getRuntimeApiBaseUrl } from "@/lib/runtimeApiConfig";
+
 export type QueryParamValue =
   | string
   | number
@@ -34,6 +36,7 @@ export class ApiError<T = unknown> extends Error {
   }
 }
 
+const storedTokenKey = "pcms_access_token";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const DEFAULT_TIMEOUT = 30000;
 const AUTH_COOKIE_NAMES = ["token", "accessToken", "authToken"];
@@ -51,6 +54,13 @@ const getCookie = (name: string) => {
 };
 
 const getAuthToken = () => {
+  if (typeof window !== "undefined") {
+    const localStorageToken = window.localStorage.getItem(storedTokenKey);
+    if (localStorageToken) {
+      return localStorageToken;
+    }
+  }
+
   for (const cookieName of AUTH_COOKIE_NAMES) {
     const token = getCookie(cookieName);
     if (token) {
@@ -59,6 +69,10 @@ const getAuthToken = () => {
   }
 
   return null;
+};
+
+const getApiBaseUrl = () => {
+  return getRuntimeApiBaseUrl(API_BASE_URL);
 };
 
 const buildQueryString = (params?: QueryParams) => {
@@ -90,7 +104,7 @@ const buildUrl = (endpoint: string, params?: QueryParams) => {
     return `${endpoint}${buildQueryString(params)}`;
   }
 
-  const baseUrl = API_BASE_URL.replace(/\/$/, "");
+  const baseUrl = getApiBaseUrl();
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
   return `${baseUrl}${path}${buildQueryString(params)}`;
@@ -124,12 +138,21 @@ const parseResponse = async <T>(response: Response): Promise<T> => {
   }
 
   const contentType = response.headers.get("content-type");
+  const text = await response.text();
 
-  if (contentType?.includes("application/json")) {
-    return response.json() as Promise<T>;
+  if (!text) {
+    return undefined as T;
   }
 
-  return response.text() as Promise<T>;
+  if (contentType?.includes("application/json")) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
+  }
+
+  return text as T;
 };
 
 const request = async <T>(
@@ -151,7 +174,6 @@ const request = async <T>(
         body === undefined || body === null || isFormData(body)
           ? (body as BodyInit | null | undefined)
           : JSON.stringify(body),
-      credentials: fetchOptions.credentials ?? "include",
       headers: createHeaders(body, fetchOptions.headers),
       signal: controller.signal,
     });

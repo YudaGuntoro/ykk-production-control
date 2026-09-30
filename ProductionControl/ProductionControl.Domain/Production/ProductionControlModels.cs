@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using ProductionControl.Domain.Auth;
 
 namespace ProductionControl.Domain.Production;
 
@@ -26,6 +27,7 @@ public enum ProductionActivityType
     PRODUCTION_UPDATE,
     WORK_HOLD,
     WORK_RESUME,
+    FINISH_CANCELLED,
     WORK_COMPLETE
 }
 
@@ -155,10 +157,10 @@ public class AreaMaster
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
-    [JsonPropertyName("area_code")]
+    [JsonPropertyName("line_no")]
     public string AreaCode { get; set; } = string.Empty;
 
-    [JsonPropertyName("area_name")]
+    [JsonPropertyName("line_name")]
     public string AreaName { get; set; } = string.Empty;
 
     [JsonPropertyName("description")]
@@ -174,63 +176,124 @@ public class AreaMaster
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
 
-public class CuttingList
+public class ProjectMaster
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
 
-    [JsonPropertyName("cutting_list_no")]
-    public string CuttingListNo { get; set; } = string.Empty;
+    [JsonPropertyName("project_no")]
+    public string ProjectNo { get; set; } = string.Empty;
 
-    [JsonPropertyName("product_code")]
-    public string ProductCode { get; set; } = string.Empty;
+    [JsonPropertyName("project_name")]
+    public string ProjectName { get; set; } = string.Empty;
 
-    [JsonPropertyName("product_name")]
-    public string ProductName { get; set; } = string.Empty;
-
-    [JsonPropertyName("line_code")]
-    public string LineCode { get; set; } = string.Empty;
-
-    [JsonPropertyName("planned_qty")]
-    public int PlannedQty { get; set; }
-
-    [JsonPropertyName("unit")]
-    public string Unit { get; set; } = "PCS";
-
-    [JsonPropertyName("plan_date")]
-    public DateTime PlanDate { get; set; }
-
-    [JsonIgnore]
-    public int StatusMasterId { get; set; } = ProductionStatusMaster.ToId(CuttingListStatus.WAITING);
-
-    [JsonPropertyName("status")]
-    [NotMapped]
-    public CuttingListStatus Status
-    {
-        get => ProductionStatusMaster.ToCuttingListStatus(StatusMasterId);
-        set => StatusMasterId = ProductionStatusMaster.ToId(value);
-    }
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
 
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+public class UnitMaster
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("unit_code")]
+    public string UnitCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("unit_name")]
+    public string UnitName { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+public class ProductionIntegrationSetting
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("setting_key")]
+    public string SettingKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("base_url")]
+    public string BaseUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("endpoint_path")]
+    public string EndpointPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("filter_field_name")]
+    public string FilterFieldName { get; set; } = "LOT_NO";
+
+    [JsonPropertyName("top")]
+    public int Top { get; set; } = 1;
+
+    [JsonPropertyName("skip")]
+    public int Skip { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+public class ReleaseProductionOrderDetail
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("production_work_order_id")]
+    public int ProductionWorkOrderId { get; set; }
+
+    [JsonPropertyName("order_no")]
+    public string? OrderNo { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("project_master_id")]
+    public int? ProjectMasterId { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+
     [JsonIgnore]
-    public StatusMaster? StatusMaster { get; set; }
+    public ProductionWorkOrder? ProductionWorkOrder { get; set; }
+
+    [JsonIgnore]
+    public ProjectMaster? ProjectMaster { get; set; }
 }
 
 public class CuttingListResponse
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
-
-    [JsonPropertyName("cutting_list_no")]
-    public string CuttingListNo { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_code")]
-    public string ProductCode { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_name")]
-    public string ProductName { get; set; } = string.Empty;
 
     [JsonPropertyName("line_code")]
     public string LineCode { get; set; } = string.Empty;
@@ -267,6 +330,15 @@ public class CuttingListResponse
 
     [JsonPropertyName("finish_operators")]
     public List<ProductionOperatorResponse> FinishOperators { get; set; } = [];
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
 }
 
 public class ProductionWorkOrder
@@ -277,20 +349,17 @@ public class ProductionWorkOrder
     [JsonPropertyName("order_number")]
     public string OrderNumber { get; set; } = string.Empty;
 
-    [JsonPropertyName("cutting_list_id")]
-    public int CuttingListId { get; set; }
-
-    [JsonPropertyName("pic_card_id")]
-    public int? PicCardId { get; set; }
-
     [JsonPropertyName("shift_master_id")]
     public int? ShiftMasterId { get; set; }
 
-    [JsonPropertyName("area_master_id")]
+    [JsonPropertyName("line_master_id")]
     public int? AreaMasterId { get; set; }
 
     [JsonPropertyName("line_code")]
     public string LineCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("plan_date")]
+    public DateTime PlanDate { get; set; } = DateTime.Today;
 
     [JsonIgnore]
     public int TargetQty { get; set; }
@@ -325,12 +394,6 @@ public class ProductionWorkOrder
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
     [JsonIgnore]
-    public CuttingList? CuttingList { get; set; }
-
-    [JsonIgnore]
-    public PicCard? PicCard { get; set; }
-
-    [JsonIgnore]
     public ShiftMaster? ShiftMaster { get; set; }
 
     [JsonIgnore]
@@ -347,6 +410,9 @@ public class ProductionWorkOrder
 
     [JsonIgnore]
     public ICollection<ProductionActivityLog> ActivityLogs { get; set; } = new List<ProductionActivityLog>();
+
+    [JsonIgnore]
+    public ReleaseProductionOrderDetail? ReleaseProductionOrderDetail { get; set; }
 }
 
 public class ProductionWorkOrderOperator
@@ -471,8 +537,8 @@ public class ProductionActivityLog
     [JsonPropertyName("production_work_order_id")]
     public int ProductionWorkOrderId { get; set; }
 
-    [JsonPropertyName("pic_card_id")]
-    public int? PicCardId { get; set; }
+    [JsonPropertyName("user_id")]
+    public int? UserId { get; set; }
 
     [JsonPropertyName("activity_type")]
     public ProductionActivityType ActivityType { get; set; }
@@ -487,7 +553,7 @@ public class ProductionActivityLog
     public ProductionWorkOrder? ProductionWorkOrder { get; set; }
 
     [JsonIgnore]
-    public PicCard? PicCard { get; set; }
+    public AppUser? User { get; set; }
 }
 
 public class ProductionDashboardSummary
@@ -511,7 +577,7 @@ public class ProductionDashboardSummary
     public int RejectQty { get; set; }
 
     [JsonPropertyName("work_orders")]
-    public List<ProductionWorkOrderResponse> WorkOrders { get; set; } = [];
+    public List<ProductionDashboardWorkOrderResponse> WorkOrders { get; set; } = [];
 
     [JsonPropertyName("daily_shift_outputs")]
     public List<ProductionDailyShiftOutput> DailyShiftOutputs { get; set; } = [];
@@ -538,6 +604,27 @@ public class ProductionDailyShiftOutput
     public int TotalCount => Shift1Count + Shift2Count + Shift3Count;
 }
 
+public class ProductionDashboardWorkOrderResponse
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("order_no")]
+    public string? OrderNo { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
+
+    [JsonPropertyName("status")]
+    public ProductionWorkOrderStatus Status { get; set; }
+}
+
 public class ProductionWorkOrderResponse
 {
     [JsonPropertyName("id")]
@@ -545,18 +632,6 @@ public class ProductionWorkOrderResponse
 
     [JsonPropertyName("order_number")]
     public string OrderNumber { get; set; } = string.Empty;
-
-    [JsonPropertyName("cutting_list_id")]
-    public int CuttingListId { get; set; }
-
-    [JsonPropertyName("cutting_list_no")]
-    public string CuttingListNo { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_code")]
-    public string ProductCode { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_name")]
-    public string ProductName { get; set; } = string.Empty;
 
     [JsonPropertyName("pic_card_id")]
     public int? PicCardId { get; set; }
@@ -582,13 +657,13 @@ public class ProductionWorkOrderResponse
     [JsonPropertyName("work_shift_type")]
     public string? WorkShiftType { get; set; }
 
-    [JsonPropertyName("area_master_id")]
+    [JsonPropertyName("line_master_id")]
     public int? AreaMasterId { get; set; }
 
-    [JsonPropertyName("area_code")]
+    [JsonPropertyName("line_no")]
     public string? AreaCode { get; set; }
 
-    [JsonPropertyName("area_name")]
+    [JsonPropertyName("line_name")]
     public string? AreaName { get; set; }
 
     [JsonPropertyName("operators")]
@@ -617,6 +692,15 @@ public class ProductionWorkOrderResponse
 
     [JsonPropertyName("updated_at")]
     public DateTime UpdatedAt { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
 }
 
 public class CreateProductionWorkOrderRequest
@@ -624,11 +708,20 @@ public class CreateProductionWorkOrderRequest
     [JsonPropertyName("order_number")]
     public string OrderNumber { get; set; } = string.Empty;
 
-    [JsonPropertyName("cutting_list_id")]
-    public int CuttingListId { get; set; }
-
     [JsonPropertyName("line_code")]
     public string? LineCode { get; set; }
+
+    [JsonPropertyName("plan_date")]
+    public DateTime? PlanDate { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
 
 }
 
@@ -636,11 +729,77 @@ public class ScanOrderNumberRequest
 {
     [JsonPropertyName("order_number")]
     public string OrderNumber { get; set; } = string.Empty;
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+}
+
+public class FabShiageProductionResultResponse
+{
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("order_no")]
+    public string? OrderNo { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
+
+    [JsonPropertyName("project_name")]
+    public string? ProjectName { get; set; }
+}
+
+public class ProductionIntegrationSettingResponse
+{
+    [JsonPropertyName("setting_key")]
+    public string SettingKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("base_url")]
+    public string BaseUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("endpoint_path")]
+    public string EndpointPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("filter_field_name")]
+    public string FilterFieldName { get; set; } = "LOT_NO";
+
+    [JsonPropertyName("top")]
+    public int Top { get; set; } = 1;
+
+    [JsonPropertyName("skip")]
+    public int Skip { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
+}
+
+public class SaveProductionIntegrationSettingRequest
+{
+    [JsonPropertyName("base_url")]
+    public string BaseUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("endpoint_path")]
+    public string EndpointPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("filter_field_name")]
+    public string FilterFieldName { get; set; } = "LOT_NO";
+
+    [JsonPropertyName("top")]
+    public int Top { get; set; } = 1;
+
+    [JsonPropertyName("skip")]
+    public int Skip { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
 }
 
 public class StartWorkOrderRequest
 {
-    [JsonPropertyName("area_master_id")]
+    [JsonPropertyName("line_master_id")]
     public int? AreaMasterId { get; set; }
 }
 
@@ -781,11 +940,38 @@ public class UpdateShiftMasterRequest
 
 public class SaveAreaMasterRequest
 {
+    [JsonPropertyName("line_no")]
+    public string? LineNo { get; set; }
+
+    [JsonPropertyName("line_name")]
+    public string? LineName { get; set; }
+
     [JsonPropertyName("area_code")]
-    public string AreaCode { get; set; } = string.Empty;
+    public string? AreaCode { get; set; }
 
     [JsonPropertyName("area_name")]
-    public string AreaName { get; set; } = string.Empty;
+    public string? AreaName { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [JsonIgnore]
+    public string RawLineNo => LineNo ?? AreaCode ?? string.Empty;
+
+    [JsonIgnore]
+    public string RawLineName => LineName ?? AreaName ?? string.Empty;
+}
+
+public class SaveUnitMasterRequest
+{
+    [JsonPropertyName("unit_code")]
+    public string UnitCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("unit_name")]
+    public string UnitName { get; set; } = string.Empty;
 
     [JsonPropertyName("description")]
     public string? Description { get; set; }
@@ -796,15 +982,6 @@ public class SaveAreaMasterRequest
 
 public class CreateCuttingListRequest
 {
-    [JsonPropertyName("cutting_list_no")]
-    public string CuttingListNo { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_code")]
-    public string ProductCode { get; set; } = string.Empty;
-
-    [JsonPropertyName("product_name")]
-    public string ProductName { get; set; } = string.Empty;
-
     [JsonPropertyName("line_code")]
     public string LineCode { get; set; } = string.Empty;
 
@@ -816,4 +993,13 @@ public class CreateCuttingListRequest
 
     [JsonPropertyName("plan_date")]
     public DateTime PlanDate { get; set; }
+
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+
+    [JsonPropertyName("project_no")]
+    public string? ProjectNo { get; set; }
+
+    [JsonPropertyName("weight")]
+    public decimal? Weight { get; set; }
 }

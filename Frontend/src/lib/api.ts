@@ -1,15 +1,26 @@
 import type { ApiResponse } from "./types";
 import { clearAuthSession, getStoredToken, redirectToSignIn } from "./auth";
-
-const fallbackBaseUrl = "http://localhost:5241";
-
-function normalizeBaseUrl(value?: string) {
-  const raw = (value || fallbackBaseUrl).split(/\s+#/)[0].trim();
-  return raw.replace(/\/+$/, "");
-}
+import { getRuntimeApiBaseUrl } from "./runtimeApiConfig";
 
 export function getApiBaseUrl() {
-  return normalizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
+  return getRuntimeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
+}
+
+function parseApiResponse<T>(text: string): ApiResponse<T> | null {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as ApiResponse<T>;
+  } catch {
+    return {
+      success: false,
+      statusCode: 0,
+      message: text.slice(0, 300) || "Server returned an invalid JSON response.",
+      data: undefined as T,
+    };
+  }
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -30,7 +41,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     headers,
   });
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as ApiResponse<T>) : null;
+  const payload = parseApiResponse<T>(text);
 
   if (response.status === 401) {
     clearAuthSession();

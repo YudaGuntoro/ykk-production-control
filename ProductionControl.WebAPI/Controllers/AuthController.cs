@@ -1,7 +1,7 @@
-using ProductionControl.Domain.Auth;
-using ProductionControl.Persistence.Services.AuthService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ProductionControl.Domain.Auth;
+using ProductionControl.Persistence.Services.AuthService;
 
 namespace ProductionControl.WebAPI.Controllers;
 

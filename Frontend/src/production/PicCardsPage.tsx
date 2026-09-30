@@ -1,9 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import type { PicCard } from "./types";
 import { formatDateTime } from "./ui";
+import QRCode from "qrcode";
+import { toPng } from "html-to-image";
+import { jsPDF } from "jspdf";
 
 const inputClass =
   "h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-500 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-300";
@@ -14,8 +17,13 @@ export default function PicCardsPage() {
   const [employeeNo, setEmployeeNo] = useState("");
   const [fullName, setFullName] = useState("");
   const [pendingDeactivate, setPendingDeactivate] = useState<PicCard | null>(null);
+  const [qrOperator, setQrOperator] = useState<PicCard | null>(null);
+  const [qrImageUrl, setQrImageUrl] = useState("");
+  const [qrSaving, setQrSaving] = useState(false);
+  const [pdfSaving, setPdfSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const qrCardRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -76,8 +84,237 @@ export default function PicCardsPage() {
     }
   }
 
+  async function openQr(operator: PicCard) {
+    setQrOperator(operator);
+    setQrImageUrl("");
+    setMessage(null);
+
+    try {
+      const dataUrl = await QRCode.toDataURL(operator.employee_no, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        scale: 8,
+        color: {
+          dark: "#0f172a",
+          light: "#ffffff",
+        },
+      });
+      setQrImageUrl(dataUrl);
+    } catch (err) {
+      setQrOperator(null);
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to generate QR." });
+    }
+  }
+
+  function qrFileName(operator: PicCard, extension: "png" | "pdf") {
+    const safeName = `${operator.employee_no}-${operator.full_name}`.replace(/[^a-z0-9-_]+/gi, "-").replace(/-+/g, "-");
+    return `QR-Operator-${safeName}.${extension}`;
+  }
+
+  async function createQrCardImage() {
+    if (!qrCardRef.current) {
+      throw new Error("QR card is not ready.");
+    }
+
+    return toPng(qrCardRef.current, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+    });
+  }
+
+  async function saveQrAsImage() {
+    if (!qrOperator) return;
+
+    setQrSaving(true);
+    try {
+      const dataUrl = await createQrCardImage();
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = qrFileName(qrOperator, "png");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save QR image." });
+    } finally {
+      setQrSaving(false);
+    }
+  }
+
+  async function createQrDataUrl(value: string) {
+    return QRCode.toDataURL(value, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      scale: 6,
+      color: {
+        dark: "#111827",
+        light: "#ffffff",
+      },
+    });
+  }
+
+  function drawOperatorQrCard(pdf: jsPDF, operator: PicCard, qrDataUrl: string, x: number, y: number, width: number) {
+    const qrSize = 28;
+    const qrX = x + (width - qrSize) / 2;
+    pdf.setDrawColor(203, 213, 225);
+    pdf.setFillColor(255, 255, 255);
+    pdf.roundedRect(x, y, width, 57, 2, 2, "FD");
+
+    pdf.setDrawColor(226, 232, 240);
+    pdf.setFillColor(248, 250, 252);
+    pdf.roundedRect(qrX - 2, y + 4, qrSize + 4, qrSize + 4, 1.5, 1.5, "FD");
+    pdf.addImage(qrDataUrl, "PNG", qrX, y + 6, qrSize, qrSize);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(6);
+    pdf.setTextColor(7, 153, 201);
+    pdf.text("NIK", x + width / 2, y + 40, { align: "center" });
+
+    pdf.setFontSize(8);
+    pdf.setTextColor(17, 24, 39);
+    pdf.text(operator.employee_no || "-", x + width / 2, y + 44, { align: "center", maxWidth: width - 5 });
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(6);
+    pdf.setTextColor(75, 85, 99);
+    pdf.text(operator.full_name || "-", x + width / 2, y + 48.5, { align: "center", maxWidth: width - 5 });
+
+    pdf.setFontSize(5);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(`${operator.department || "-"} / ${operator.shift || "-"}`, x + width / 2, y + 52.5, { align: "center", maxWidth: width - 5 });
+  }
+
+  async function saveOperatorsPdf(selectedOperators: PicCard[], fileName: string) {
+    if (!selectedOperators.length) return;
+
+    setPdfSaving(true);
+    try {
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const marginX = 10;
+      const marginTop = 14;
+      const gapX = 4;
+      const gapY = 6;
+      const columns = 5;
+      const cardWidth = (pageWidth - marginX * 2 - gapX * (columns - 1)) / columns;
+      const cardHeight = 57;
+      let x = marginX;
+      let y = marginTop;
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(17, 24, 39);
+      pdf.text("Operator QR List", marginX, 8);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text("QR berisi NIK operator. Layout 5 QR per baris.", marginX + 44, 8);
+
+      for (let index = 0; index < selectedOperators.length; index++) {
+        if (index > 0 && index % columns === 0) {
+          x = marginX;
+          y += cardHeight + gapY;
+        }
+
+        if (y + cardHeight > pageHeight - 10) {
+          pdf.addPage();
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(12);
+          pdf.setTextColor(17, 24, 39);
+          pdf.text("Operator QR List", marginX, 8);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8);
+          pdf.setTextColor(100, 116, 139);
+          pdf.text("QR berisi NIK operator. Layout 5 QR per baris.", marginX + 44, 8);
+          x = marginX;
+          y = marginTop;
+        }
+
+        const operator = selectedOperators[index];
+        const qrDataUrl = await createQrDataUrl(operator.employee_no);
+        drawOperatorQrCard(pdf, operator, qrDataUrl, x, y, cardWidth);
+        x += cardWidth + gapX;
+      }
+
+      pdf.save(fileName);
+    } catch (err) {
+      setMessage({ kind: "error", text: err instanceof Error ? err.message : "Failed to save QR PDF." });
+    } finally {
+      setPdfSaving(false);
+    }
+  }
+
+  async function saveSingleOperatorPdf(operator: PicCard) {
+    await saveOperatorsPdf([operator], qrFileName(operator, "pdf"));
+  }
+
+  async function saveOperatorListPdf() {
+    await saveOperatorsPdf(items, `QR-Operator-List-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
   return (
     <div className="space-y-6">
+      {qrOperator ? (
+        <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-slate-950/55 px-4">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900">
+            <button
+              aria-label="Close QR"
+              className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-md text-xs font-black text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+              onClick={() => {
+                setQrOperator(null);
+                setQrImageUrl("");
+                setQrSaving(false);
+              }}
+              type="button"
+            >
+              X
+            </button>
+
+            <div ref={qrCardRef} className="bg-white px-6 pb-5 pt-5 text-center text-slate-950">
+              <div className="pr-10 text-left">
+                <div>
+                  <h2 className="text-lg font-black text-slate-950">QR Operator</h2>
+                  <p className="mt-1 text-sm font-bold text-slate-500">{qrOperator.full_name}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                {qrImageUrl ? (
+                  <img alt={`QR NIK ${qrOperator.employee_no}`} className="mx-auto size-56" src={qrImageUrl} />
+                ) : (
+                  <div className="mx-auto flex size-56 items-center justify-center text-sm font-bold text-slate-400">Generating QR...</div>
+                )}
+              </div>
+
+              <p className="mt-5 text-[11px] font-black uppercase tracking-wider text-slate-500">NIK</p>
+              <p className="mt-1 break-all text-2xl font-black text-slate-950">{qrOperator.employee_no}</p>
+              <p className="mt-3 text-xs font-semibold text-slate-500">QR berisi NIK operator dan bisa discan.</p>
+            </div>
+
+            <div className="grid gap-3 border-t border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:grid-cols-2">
+              <button
+                className="h-10 w-full rounded-lg bg-[#0799c9] px-4 text-xs font-black text-white shadow-sm hover:bg-[#087ea4] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!qrImageUrl || qrSaving || pdfSaving}
+                onClick={() => void saveQrAsImage()}
+                type="button"
+              >
+                {qrSaving ? "Saving..." : "Save Image"}
+              </button>
+              <button
+                className="h-10 w-full rounded-lg bg-red-600 px-4 text-xs font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!qrImageUrl || qrSaving || pdfSaving}
+                onClick={() => void saveSingleOperatorPdf(qrOperator)}
+                type="button"
+              >
+                {pdfSaving ? "Saving..." : "Print PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {pendingDeactivate ? (
         <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-slate-950/50 px-4">
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
@@ -170,9 +407,19 @@ export default function PicCardsPage() {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h2 className="font-bold text-slate-900 dark:text-white">List Operator</h2>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Operator master data.</p>
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-bold text-slate-900 dark:text-white">List Operator</h2>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Operator master data.</p>
+          </div>
+          <button
+            className="h-10 rounded-lg bg-red-600 px-4 text-xs font-black text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!items.length || pdfSaving}
+            onClick={() => void saveOperatorListPdf()}
+            type="button"
+          >
+            {pdfSaving ? "Preparing PDF..." : "Print List PDF"}
+          </button>
         </div>
         <div className="overflow-x-auto p-5">
           <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left">
@@ -185,7 +432,7 @@ export default function PicCardsPage() {
                 <th className="bg-[#0799c9] px-4 py-3">Shift</th>
                 <th className="bg-[#0799c9] px-4 py-3">Last Scan</th>
                 <th className="bg-[#0799c9] px-4 py-3">Status</th>
-                <th className="rounded-r-lg bg-[#0799c9] px-5 py-3 text-right">Action</th>
+                <th className="rounded-r-lg bg-[#0799c9] px-5 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -203,14 +450,23 @@ export default function PicCardsPage() {
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <button
-                      className="h-9 rounded-md border border-rose-200 px-3 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300"
-                      disabled={!item.is_active || busy}
-                      onClick={() => setPendingDeactivate(item)}
-                      type="button"
-                    >
-                      Nonaktifkan
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        className="h-9 rounded-md border border-cyan-200 px-3 text-xs font-bold text-[#0799c9] hover:bg-cyan-50 dark:border-cyan-500/30 dark:text-cyan-300 dark:hover:bg-cyan-500/10"
+                        onClick={() => void openQr(item)}
+                        type="button"
+                      >
+                        QR
+                      </button>
+                      <button
+                        className="h-9 rounded-md border border-rose-200 px-3 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300"
+                        disabled={!item.is_active || busy}
+                        onClick={() => setPendingDeactivate(item)}
+                        type="button"
+                      >
+                        Nonaktifkan
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
