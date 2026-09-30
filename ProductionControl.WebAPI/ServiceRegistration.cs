@@ -187,15 +187,7 @@ public static class ServiceRegistration
                     """);
             }
 
-            if (ColumnExists(connection, "line_master", "area_code") && !ColumnExists(connection, "line_master", "line_no"))
-            {
-                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `area_code` `line_no` VARCHAR(50) NOT NULL;");
-            }
-
-            if (ColumnExists(connection, "line_master", "area_name") && !ColumnExists(connection, "line_master", "line_name"))
-            {
-                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `area_name` `line_name` VARCHAR(150) NOT NULL;");
-            }
+            EnsureLineMasterColumns(connection);
 
             if (ColumnExists(connection, "production_work_orders", "area_master_id") &&
                 !ColumnExists(connection, "production_work_orders", "line_master_id"))
@@ -274,6 +266,57 @@ public static class ServiceRegistration
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_plan_line", "(`plan_date`, `line_code`)");
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_shift_master", "(`shift_master_id`)");
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_line_master", "(`line_master_id`)");
+    }
+
+    private static void EnsureLineMasterColumns(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "line_master"))
+        {
+            return;
+        }
+
+        if (!ColumnExists(connection, "line_master", "line_no"))
+        {
+            if (ColumnExists(connection, "line_master", "area_code"))
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `area_code` `line_no` VARCHAR(50) NULL;");
+            }
+            else if (ColumnExists(connection, "line_master", "line_code"))
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `line_code` `line_no` VARCHAR(50) NULL;");
+            }
+            else
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` ADD COLUMN `line_no` VARCHAR(50) NULL;");
+            }
+
+            ExecuteNonQuery(connection, "UPDATE `line_master` SET `line_no` = CONCAT('LINE-', LPAD(`id`, 2, '0')) WHERE `line_no` IS NULL OR `line_no` = '';");
+            ExecuteNonQuery(connection, "ALTER TABLE `line_master` MODIFY COLUMN `line_no` VARCHAR(50) NOT NULL;");
+        }
+
+        if (!ColumnExists(connection, "line_master", "line_name"))
+        {
+            if (ColumnExists(connection, "line_master", "area_name"))
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `area_name` `line_name` VARCHAR(150) NULL;");
+            }
+            else if (ColumnExists(connection, "line_master", "name"))
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` CHANGE COLUMN `name` `line_name` VARCHAR(150) NULL;");
+            }
+            else
+            {
+                ExecuteNonQuery(connection, "ALTER TABLE `line_master` ADD COLUMN `line_name` VARCHAR(150) NULL;");
+            }
+
+            ExecuteNonQuery(connection, "UPDATE `line_master` SET `line_name` = `line_no` WHERE `line_name` IS NULL OR `line_name` = '';");
+            ExecuteNonQuery(connection, "ALTER TABLE `line_master` MODIFY COLUMN `line_name` VARCHAR(150) NOT NULL;");
+        }
+
+        AddColumnIfMissing(connection, "line_master", "description", "VARCHAR(255) NULL");
+        AddColumnIfMissing(connection, "line_master", "is_active", "TINYINT(1) NOT NULL DEFAULT 1");
+        AddColumnIfMissing(connection, "line_master", "created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+        AddColumnIfMissing(connection, "line_master", "updated_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
     }
 
     private static void EnsureReleaseProductionOrderDetailSchema(System.Data.Common.DbConnection connection)
