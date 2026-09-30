@@ -19,6 +19,16 @@ dotnet publish "%PROJECT%" -c Release -o "%OUTPUT%" --no-restore
 if errorlevel 1 goto failed
 
 echo.
+echo Restarting IIS...
+iisreset
+if errorlevel 1 (
+    echo.
+    echo IIS reset failed. Run this batch as Administrator or run iisreset manually.
+) else (
+    echo IIS reset completed.
+)
+
+echo.
 echo Backend publish completed.
 echo IIS publish folder:
 echo %OUTPUT%
