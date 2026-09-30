@@ -3,7 +3,9 @@ setlocal
 
 set "PROJECT=%~dp0ProductionControl.WebAPI.csproj"
 set "OUTPUT=%~dp0publish"
+set "APP_OFFLINE=%OUTPUT%\app_offline.htm"
 set "STOPPED_IIS=0"
+set "CREATED_OFFLINE=0"
 
 echo Publishing backend for IIS...
 echo Project: %PROJECT%
@@ -17,6 +19,13 @@ dotnet restore "%PROJECT%"
 if errorlevel 1 goto failed
 
 echo.
+echo Putting IIS application offline...
+> "%APP_OFFLINE%" echo Backend deployment in progress. Please refresh in a moment.
+if errorlevel 1 goto failed
+set "CREATED_OFFLINE=1"
+timeout /t 3 /nobreak >nul
+
+echo.
 echo Stopping IIS before publish...
 iisreset /stop
 if errorlevel 1 (
@@ -28,6 +37,9 @@ set "STOPPED_IIS=1"
 
 dotnet publish "%PROJECT%" -c Release -o "%OUTPUT%" --no-restore
 if errorlevel 1 goto failed
+
+if exist "%APP_OFFLINE%" del /f /q "%APP_OFFLINE%"
+set "CREATED_OFFLINE=0"
 
 echo.
 echo Starting IIS...
@@ -50,6 +62,10 @@ exit /b 0
 
 :failed
 echo.
+if "%CREATED_OFFLINE%"=="1" if exist "%APP_OFFLINE%" (
+    echo Removing app_offline.htm after failure...
+    del /f /q "%APP_OFFLINE%"
+)
 if "%STOPPED_IIS%"=="1" (
     echo Starting IIS after failure...
     iisreset /start
