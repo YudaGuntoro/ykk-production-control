@@ -66,6 +66,7 @@ public static class ServiceRegistration
         var allowedOrigins = (configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
             .Where(origin => !string.IsNullOrWhiteSpace(origin))
             .ToArray();
+        var allowAnyOrigin = allowedOrigins.Length == 0 || allowedOrigins.Any(origin => origin.Trim() == "*");
         services.AddCors(options =>
         {
             options.AddDefaultPolicy(policy =>
@@ -73,13 +74,13 @@ public static class ServiceRegistration
                 policy.AllowAnyMethod()
                     .AllowAnyHeader();
 
-                if (allowedOrigins.Length > 0)
+                if (allowAnyOrigin)
                 {
-                    policy.WithOrigins(allowedOrigins);
+                    policy.AllowAnyOrigin();
                 }
                 else
                 {
-                    policy.AllowAnyOrigin();
+                    policy.WithOrigins(allowedOrigins);
                 }
             });
         });
