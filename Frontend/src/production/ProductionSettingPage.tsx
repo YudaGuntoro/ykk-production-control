@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/context/ToastContext";
-import { apiGet, apiPut, getApiBaseUrl } from "@/lib/api";
+import { apiGet, apiPost, apiPut, getApiBaseUrl } from "@/lib/api";
 import { clearStoredApiBaseUrl, getStoredApiBaseUrl, setStoredApiBaseUrl } from "@/lib/runtimeApiConfig";
 
 type IntegrationSettingKey = "shiage_lot_no" | "internal_system_auth";
@@ -25,6 +25,15 @@ type EndpointPreviewRow = {
   order_no?: string | null;
   project_no?: string | null;
   weight?: number | null;
+};
+
+type InternalLoginTestResult = {
+  url: string;
+  status_code: number;
+  success: boolean;
+  message: string;
+  token_preview?: string | null;
+  response_preview: string;
 };
 
 type SettingDefinition = {
@@ -131,8 +140,9 @@ export default function ProductionSettingPage() {
   const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [settings, setSettings] = useState<Record<IntegrationSettingKey, IntegrationSetting>>(defaultSettings);
   const [lotNo, setLotNo] = useState("");
-  const [loadingKey, setLoadingKey] = useState<IntegrationSettingKey | "test" | "">("");
+  const [loadingKey, setLoadingKey] = useState<IntegrationSettingKey | "test" | "login-test" | "">("");
   const [previewRows, setPreviewRows] = useState<EndpointPreviewRow[]>([]);
+  const [loginTestResult, setLoginTestResult] = useState<InternalLoginTestResult | null>(null);
 
   useEffect(() => {
     setApiBaseUrl(getStoredApiBaseUrl() || getApiBaseUrl());
@@ -230,6 +240,42 @@ export default function ProductionSettingPage() {
       toast.success({ message: `${definition.title} berhasil disimpan.` });
     } catch (err) {
       toast.error({ message: err instanceof Error ? err.message : "Gagal menyimpan setting endpoint." });
+    } finally {
+      setLoadingKey("");
+    }
+  }
+
+  function buildSettingRequest(definition: SettingDefinition) {
+    const current = settings[definition.key];
+    return {
+      base_url: normalizeBaseUrl(current.base_url),
+      endpoint_path: normalizeEndpointPath(current.endpoint_path, definition.endpointPlaceholder),
+      username: current.username?.trim() || null,
+      password: current.password?.trim() || null,
+      filter_field_name: current.filter_field_name.trim() || defaultSettings[definition.key].filter_field_name,
+      top: Math.max(1, Math.min(Number(current.top) || 1, 1000)),
+      skip: Math.max(0, Number(current.skip) || 0),
+      is_active: current.is_active,
+    };
+  }
+
+  async function testInternalLogin(definition: SettingDefinition) {
+    setLoadingKey("login-test");
+    setLoginTestResult(null);
+
+    try {
+      const result = await apiPost<InternalLoginTestResult>(
+        "/api/production/settings/integration/internal-system-auth/test-login",
+        buildSettingRequest(definition)
+      );
+      setLoginTestResult(result);
+      if (result.success) {
+        toast.success({ message: result.message || "Login internal system berhasil." });
+      } else {
+        toast.error({ message: result.message || "Login internal system gagal." });
+      }
+    } catch (err) {
+      toast.error({ message: err instanceof Error ? err.message : "Gagal test login internal system." });
     } finally {
       setLoadingKey("");
     }
@@ -428,7 +474,29 @@ export default function ProductionSettingPage() {
                 >
                   {isSaving ? "Saving..." : "Save Setting"}
                 </button>
+                {definition.showCredentials ? (
+                  <button
+                    className="h-11 rounded-lg border border-slate-200 px-5 text-sm font-bold text-slate-700 transition hover:border-[#0799c9] hover:text-[#0799c9] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
+                    disabled={loadingKey === "login-test"}
+                    onClick={() => void testInternalLogin(definition)}
+                    type="button"
+                  >
+                    {loadingKey === "login-test" ? "Testing..." : "Test Login"}
+                  </button>
+                ) : null}
               </div>
+
+              {definition.showCredentials && loginTestResult ? (
+                <div className="lg:col-span-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <p>Status: <span className={loginTestResult.success ? "text-emerald-600" : "text-rose-600"}>{loginTestResult.status_code}</span></p>
+                    <p>Token: {loginTestResult.token_preview || "-"}</p>
+                    <p className="break-all md:col-span-2">URL: {loginTestResult.url}</p>
+                    <p className="md:col-span-2">Message: {loginTestResult.message || "-"}</p>
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 font-mono text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-200 md:col-span-2">{loginTestResult.response_preview || "-"}</pre>
+                  </div>
+                </div>
+              ) : null}
             </form>
           </section>
         );

@@ -815,6 +815,27 @@ public class SaveProductionIntegrationSettingRequest
     public bool IsActive { get; set; } = true;
 }
 
+public class InternalSystemLoginTestResponse
+{
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("status_code")]
+    public int StatusCode { get; set; }
+
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("token_preview")]
+    public string? TokenPreview { get; set; }
+
+    [JsonPropertyName("response_preview")]
+    public string ResponsePreview { get; set; } = string.Empty;
+}
+
 public class StartWorkOrderRequest
 {
     [JsonPropertyName("line_master_id")]

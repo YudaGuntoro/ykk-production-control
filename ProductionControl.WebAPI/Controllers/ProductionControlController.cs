@@ -3,6 +3,7 @@ using ProductionControl.Persistence.Context;
 using ProductionControl.WebAPI.Reports;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -284,6 +285,60 @@ public class ProductionControlController : ApiControllerBase
         {
             var normalizedSettingKey = NormalizeSettingKey(settingKey);
             return await SaveIntegrationSetting(normalizedSettingKey, request, "Setting endpoint berhasil disimpan.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpPost("settings/integration/internal-system-auth/test-login")]
+    public async Task<IActionResult> TestInternalSystemLogin([FromBody] SaveProductionIntegrationSettingRequest request)
+    {
+        try
+        {
+            var storedSetting = await GetIntegrationSettingEntity(InternalSystemAuthSettingKey);
+            var baseUrl = NormalizeBaseUrl(request.BaseUrl) ?? NormalizeBaseUrl(storedSetting.BaseUrl);
+            var endpointPath = NormalizeEndpointPath(
+                request.EndpointPath,
+                storedSetting.EndpointPath is { Length: > 0 } ? storedSetting.EndpointPath : GetDefaultEndpointPath(InternalSystemAuthSettingKey));
+            var username = NormalizeText(request.Username) ?? NormalizeText(storedSetting.Username);
+            var password = NormalizeText(request.Password) ?? NormalizeText(storedSetting.Password);
+
+            if (baseUrl is null)
+            {
+                throw new ArgumentException("Base URL is required.");
+            }
+
+            if (username is null)
+            {
+                throw new ArgumentException("Username is required.");
+            }
+
+            if (password is null)
+            {
+                throw new ArgumentException("Password is required.");
+            }
+
+            var url = $"{baseUrl}{endpointPath}";
+            using var response = await _httpClientFactory.CreateClient().PostAsJsonAsync(url, new
+            {
+                username,
+                password
+            });
+            var content = await response.Content.ReadAsStringAsync();
+            var message = GetInternalLoginMessage(content) ?? response.ReasonPhrase ?? "Login request completed.";
+            var token = GetInternalLoginToken(content);
+
+            return ApiOk(new InternalSystemLoginTestResponse
+            {
+                Url = url,
+                StatusCode = (int)response.StatusCode,
+                Success = response.IsSuccessStatusCode,
+                Message = message,
+                TokenPreview = MaskToken(token),
+                ResponsePreview = content.Length > 500 ? $"{content[..500]}..." : content
+            }, response.IsSuccessStatusCode ? "Login internal system berhasil." : "Login internal system gagal.");
         }
         catch (Exception ex)
         {
@@ -1691,6 +1746,63 @@ public class ProductionControlController : ApiControllerBase
         }
 
         return null;
+    }
+
+    private static string? GetInternalLoginMessage(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            return GetJsonString(root, "message") ??
+                GetJsonString(root, "error") ??
+                GetJsonString(root, "statusText") ??
+                GetJsonString(root, "status");
+        }
+        catch
+        {
+            return content.Length > 300 ? content[..300] : content;
+        }
+    }
+
+    private static string? GetInternalLoginToken(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            var data = TryGetProperty(root, "data");
+            return GetJsonString(root, "token") ??
+                GetJsonString(root, "access_token") ??
+                GetJsonString(root, "accessToken") ??
+                (data.HasValue ? GetJsonString(data.Value, "token") : null) ??
+                (data.HasValue ? GetJsonString(data.Value, "access_token") : null) ??
+                (data.HasValue ? GetJsonString(data.Value, "accessToken") : null);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? MaskToken(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        return token.Length <= 12 ? "********" : $"{token[..6]}...{token[^6..]}";
     }
 
     private static string? GetJsonString(JsonElement element, string name)
