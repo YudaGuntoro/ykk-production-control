@@ -4,6 +4,8 @@ setlocal
 set "FRONTEND_DIR=%~dp0"
 set "PM2_APP_NAME=ykk-frontend"
 set "FRONTEND_PORT=3000"
+set "PM2_AVAILABLE=0"
+set "STOPPED_PM2=0"
 
 echo Building frontend...
 cd /d "%FRONTEND_DIR%"
@@ -12,18 +14,36 @@ if errorlevel 1 goto failed
 if not exist "%FRONTEND_DIR%.next" mkdir "%FRONTEND_DIR%.next"
 if errorlevel 1 goto failed
 
+where pm2 >nul 2>nul
+if errorlevel 1 (
+    set "PM2_AVAILABLE=0"
+) else (
+    set "PM2_AVAILABLE=1"
+)
+
+if "%PM2_AVAILABLE%"=="1" (
+    pm2 describe "%PM2_APP_NAME%" >nul 2>nul
+    if not errorlevel 1 (
+        echo.
+        echo Stopping PM2 app %PM2_APP_NAME% before installing dependencies...
+        call pm2 stop "%PM2_APP_NAME%"
+        if errorlevel 1 goto failed
+        set "STOPPED_PM2=1"
+    )
+)
+
 if exist package-lock.json (
     call npm ci
+    if errorlevel 1 goto failed
 ) else (
     call npm install
+    if errorlevel 1 goto failed
 )
-if errorlevel 1 goto failed
 
 call npm run build
 if errorlevel 1 goto failed
 
-where pm2 >nul 2>nul
-if errorlevel 1 goto skip_pm2
+if "%PM2_AVAILABLE%"=="0" goto skip_pm2
 
 pm2 describe "%PM2_APP_NAME%" >nul 2>nul
 if errorlevel 1 (
@@ -53,6 +73,10 @@ exit /b 0
 
 :failed
 echo.
+if "%PM2_AVAILABLE%"=="1" if "%STOPPED_PM2%"=="1" (
+    echo Restarting PM2 app %PM2_APP_NAME% after failure...
+    call pm2 restart "%PM2_APP_NAME%"
+)
 echo Frontend build failed.
 pause
 exit /b 1
