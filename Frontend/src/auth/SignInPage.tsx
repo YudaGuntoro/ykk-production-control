@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useId, useState } from "react";
 import { apiPost } from "@/lib/api";
 import { hasValidAuthSession, saveAuthSession } from "@/lib/auth";
-import { getRuntimeApiBaseUrl, getStoredApiBaseUrl, setStoredApiBaseUrl } from "@/lib/runtimeApiConfig";
+import { clearStoredApiBaseUrl } from "@/lib/runtimeApiConfig";
 import type { LoginResponse } from "@/lib/types";
 
 function safeNextPath(value: string | null) {
@@ -22,10 +22,8 @@ export default function SignInPage() {
   const usernameFieldId = useId().replace(/:/g, "");
   const passwordFieldId = useId().replace(/:/g, "");
   const [showPassword, setShowPassword] = useState(false);
-  const [showServerSetting, setShowServerSetting] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,14 +34,8 @@ export default function SignInPage() {
   }, [nextPath, router]);
 
   useEffect(() => {
-    setApiBaseUrl(getStoredApiBaseUrl() || getRuntimeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL));
+    clearStoredApiBaseUrl();
   }, []);
-
-  function saveApiServer() {
-    const saved = setStoredApiBaseUrl(apiBaseUrl);
-    setApiBaseUrl(saved);
-    setError(null);
-  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,41 +159,6 @@ export default function SignInPage() {
               </button>
             </div>
           </form>
-
-          <div className="mt-6 border-t border-gray-100 pt-5 dark:border-white/[0.08]">
-            <button
-              className="text-xs font-semibold text-gray-500 transition hover:text-[#0799c9] dark:text-gray-400"
-              onClick={() => setShowServerSetting((current) => !current)}
-              type="button"
-            >
-              Server Setting
-            </button>
-
-            {showServerSetting ? (
-              <div className="mt-4">
-                <Label htmlFor="api-server-url">API Server</Label>
-                <div className="mt-2 flex gap-2">
-                  <Input
-                    className="h-11"
-                    disabled={loading}
-                    id="api-server-url"
-                    onChange={(event) => setApiBaseUrl(event.target.value)}
-                    placeholder="http://192.168.1.10:5241"
-                    type="url"
-                    value={apiBaseUrl}
-                  />
-                  <button
-                    className="h-11 rounded-lg border border-gray-300 px-4 text-sm font-semibold text-gray-700 transition hover:border-[#0799c9] hover:text-[#0799c9] disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200"
-                    disabled={loading}
-                    onClick={saveApiServer}
-                    type="button"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-gray-500 dark:text-gray-500">PT YKK AP Indonesia</p>
