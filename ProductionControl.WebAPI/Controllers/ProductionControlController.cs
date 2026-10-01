@@ -3,6 +3,7 @@ using ProductionControl.Persistence.Context;
 using ProductionControl.WebAPI.Reports;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
@@ -348,6 +349,51 @@ public class ProductionControlController : ApiControllerBase
                 Refresh = refresh,
                 ResponsePreview = content.Length > 500 ? $"{content[..500]}..." : content
             }, response.IsSuccessStatusCode ? "Login external endpoint berhasil." : "Login external endpoint gagal.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpPost("settings/integration/shiage-lot-no/test")]
+    public async Task<IActionResult> TestShiageLotNoEndpoint([FromBody] TestShiageEndpointRequest request)
+    {
+        try
+        {
+            var lotNo = ExtractLotNoFromScan(request.LotNo);
+            var setting = new ProductionIntegrationSetting
+            {
+                SettingKey = ShiageLotNoSettingKey,
+                BaseUrl = NormalizeBaseUrl(request.BaseUrl) ?? string.Empty,
+                EndpointPath = NormalizeEndpointPath(request.EndpointPath, GetDefaultEndpointPath(ShiageLotNoSettingKey)),
+                FilterFieldName = NormalizeText(request.FilterFieldName) ?? GetDefaultFilterFieldName(ShiageLotNoSettingKey),
+                Top = Math.Clamp(request.Top, 1, 1000),
+                Skip = Math.Max(0, request.Skip),
+                IsActive = request.IsActive
+            };
+
+            if (string.IsNullOrWhiteSpace(setting.BaseUrl))
+            {
+                throw new ArgumentException("Base URL is required.");
+            }
+
+            var url = BuildShiageUrl(setting, lotNo);
+            using var response = await SendShiageRequest(url);
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Shiage endpoint failed with status {(int)response.StatusCode}: {content}");
+            }
+
+            using var document = JsonDocument.Parse(content);
+            var rows = ResolveShiageDataRows(document.RootElement)
+                .Select(ToFabShiageProductionResultResponse)
+                .Take(10)
+                .ToList();
+
+            return ApiOk(rows, $"Endpoint berhasil diakses. {rows.Count} row diterima.");
         }
         catch (Exception ex)
         {
@@ -1718,7 +1764,7 @@ public class ProductionControlController : ApiControllerBase
         }
 
         var url = BuildShiageUrl(setting, lotNo);
-        using var response = await _httpClientFactory.CreateClient().GetAsync(url);
+        using var response = await SendShiageRequest(url);
         var content = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -1731,21 +1777,75 @@ public class ProductionControlController : ApiControllerBase
         return data.HasValue ? ToShiageLotNoResult(data.Value) : null;
     }
 
-    private static string BuildShiageUrl(ProductionIntegrationSetting setting, string lotNo)
+    private static string BuildShiageUrl(ProductionIntegrationSetting setting, string? lotNo)
     {
         var baseUrl = NormalizeBaseUrl(setting.BaseUrl) ?? string.Empty;
         var endpointPath = NormalizeEndpointPath(setting.EndpointPath);
         var filterFieldName = NormalizeText(setting.FilterFieldName) ?? "LOT_NO";
-        var filterValue = lotNo.Replace("'", "''");
         var query = new Dictionary<string, string>
         {
             ["$top"] = Math.Clamp(setting.Top, 1, 1000).ToString(),
-            ["$skip"] = Math.Max(0, setting.Skip).ToString(),
-            ["$filter"] = $"{filterFieldName} eq '{filterValue}'"
+            ["$skip"] = Math.Max(0, setting.Skip).ToString()
         };
+
+        if (!string.IsNullOrWhiteSpace(lotNo))
+        {
+            var filterValue = lotNo.Replace("'", "''");
+            query["$filter"] = $"{filterFieldName} eq '{filterValue}'";
+        }
+
         var queryString = string.Join("&", query.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
 
         return $"{baseUrl}{endpointPath}?{queryString}";
+    }
+
+    private async Task<HttpResponseMessage> SendShiageRequest(string url)
+    {
+        var client = _httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var token = await GetExternalAccessToken();
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return await client.SendAsync(request);
+    }
+
+    private async Task<string?> GetExternalAccessToken()
+    {
+        var authSetting = await GetIntegrationSettingEntity(InternalSystemAuthSettingKey);
+        if (!authSetting.IsActive)
+        {
+            return null;
+        }
+
+        var baseUrl = NormalizeBaseUrl(authSetting.BaseUrl);
+        var endpointPath = NormalizeEndpointPath(authSetting.EndpointPath, GetDefaultEndpointPath(InternalSystemAuthSettingKey));
+        var username = NormalizeText(authSetting.Username);
+        var password = NormalizeText(authSetting.Password);
+
+        if (baseUrl is null || username is null || password is null)
+        {
+            return null;
+        }
+
+        var url = $"{baseUrl}{endpointPath}";
+        using var response = await _httpClientFactory.CreateClient().PostAsJsonAsync(url, new
+        {
+            email = username,
+            password
+        });
+        var content = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Login external failed with status {(int)response.StatusCode}: {content}");
+        }
+
+        return GetInternalLoginToken(content);
     }
 
     private static JsonElement? ResolveShiageDataElement(JsonElement root)
@@ -1759,6 +1859,28 @@ public class ProductionControlController : ApiControllerBase
         return data.ValueKind == JsonValueKind.Object ? data : null;
     }
 
+    private static IEnumerable<JsonElement> ResolveShiageDataRows(JsonElement root)
+    {
+        var data = TryGetProperty(root, "data") ?? root;
+        if (data.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in data.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object)
+                {
+                    yield return item;
+                }
+            }
+
+            yield break;
+        }
+
+        if (data.ValueKind == JsonValueKind.Object)
+        {
+            yield return data;
+        }
+    }
+
     private static ShiageLotNoResult ToShiageLotNoResult(JsonElement data)
     {
         return new ShiageLotNoResult(
@@ -1769,6 +1891,18 @@ public class ProductionControlController : ApiControllerBase
             ProjectName: GetJsonString(data, "PROJECT_NAME"),
             Line: GetJsonString(data, "LINE"),
             CutPlan: GetJsonDate(data, "CUT_PLAN"));
+    }
+
+    private static FabShiageProductionResultResponse ToFabShiageProductionResultResponse(JsonElement data)
+    {
+        return new FabShiageProductionResultResponse
+        {
+            ProjectNo = GetJsonString(data, "PROJECT_NO"),
+            OrderNo = GetJsonString(data, "ORDER_NO"),
+            LotNo = GetJsonString(data, "LOT_NO"),
+            Weight = GetJsonDecimal(data, "WEIGHT"),
+            ProjectName = GetJsonString(data, "PROJECT_NAME")
+        };
     }
 
     private static JsonElement? TryGetProperty(JsonElement element, string name)

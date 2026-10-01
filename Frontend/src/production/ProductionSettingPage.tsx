@@ -133,33 +133,23 @@ function buildUrl(setting: IntegrationSetting, fallbackEndpoint: string, lotNo =
   const baseUrl = normalizeBaseUrl(setting.base_url || getApiBaseUrl());
   const endpointPath = normalizeEndpointPath(setting.endpoint_path, fallbackEndpoint);
   const url = new URL(`${baseUrl}${endpointPath}`);
-  const normalizedLotNo = lotNo.trim();
+  const normalizedLotNo = extractLotNoFromScan(lotNo);
 
   if (normalizedLotNo) {
-    url.searchParams.set("lotNo", normalizedLotNo);
+    url.searchParams.set("$top", String(Math.max(1, Math.min(Number(setting.top) || 1, 1000))));
+    url.searchParams.set("$skip", String(Math.max(0, Number(setting.skip) || 0)));
+    url.searchParams.set("$filter", `${setting.filter_field_name || "LOT_NO"} eq '${normalizedLotNo.replace(/'/g, "''")}'`);
   }
 
   return url.toString();
 }
 
-async function readJsonOrText(response: Response) {
-  const text = await response.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function getPayloadMessage(payload: unknown) {
-  if (payload && typeof payload === "object" && "message" in payload) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-
-  return typeof payload === "string" ? payload.slice(0, 300) : "";
+function extractLotNoFromScan(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  const parts = normalized.split(/\s+/);
+  if (parts.length < 2) return normalized;
+  return parts[1].slice(0, 10);
 }
 
 export default function ProductionSettingPage() {
@@ -314,24 +304,10 @@ export default function ProductionSettingPage() {
     setPreviewRows([]);
 
     try {
-      const response = await fetch(shiagePreviewUrl, {
-        headers: { Accept: "application/json" },
+      const rows = await apiPost<EndpointPreviewRow[]>("/api/production/settings/integration/shiage-lot-no/test", {
+        ...buildSettingRequest(settingDefinitions[0]),
+        lot_no: lotNo,
       });
-      const payload = await readJsonOrText(response);
-
-      if (
-        !response.ok ||
-        (payload && typeof payload === "object" && "success" in payload && payload.success === false)
-      ) {
-        throw new Error(getPayloadMessage(payload) || `Request failed with status ${response.status}`);
-      }
-
-      const rows =
-        payload && typeof payload === "object" && "data" in payload && Array.isArray(payload.data)
-          ? payload.data
-          : Array.isArray(payload)
-            ? payload
-            : [];
       setPreviewRows(rows.slice(0, 10));
       toast.success({ message: `Endpoint berhasil diakses. ${rows.length} row diterima.` });
     } catch (err) {

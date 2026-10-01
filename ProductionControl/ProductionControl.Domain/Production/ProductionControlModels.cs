@@ -815,6 +815,12 @@ public class SaveProductionIntegrationSettingRequest
     public bool IsActive { get; set; } = true;
 }
 
+public class TestShiageEndpointRequest : SaveProductionIntegrationSettingRequest
+{
+    [JsonPropertyName("lot_no")]
+    public string? LotNo { get; set; }
+}
+
 public class InternalSystemLoginTestResponse
 {
     [JsonPropertyName("url")]
