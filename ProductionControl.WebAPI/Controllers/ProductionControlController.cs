@@ -1511,8 +1511,6 @@ public class ProductionControlController : ApiControllerBase
             user?.Username ?? "-",
             log.ActivityType.ToString().Replace("_", " "),
             log.Remarks ?? "-",
-            order?.ActualQty ?? 0,
-            order?.RejectQty ?? 0,
             order?.Status.ToString().Replace("_", " ") ?? "-");
     }
 

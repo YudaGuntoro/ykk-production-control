@@ -14,8 +14,6 @@ public sealed record ProductionActivityReportRow(
     string EmployeeNo,
     string Activity,
     string Remarks,
-    int ActualQty,
-    int RejectQty,
     string Status);
 
 public sealed record ProductionActivityReportContext(
@@ -28,7 +26,7 @@ public sealed class ProductionActivityExcelExporter
     private const string SheetName = "Activity Report";
     private const string SummarySheetName = "Summary";
     private const int HeaderRow = 8;
-    private const int ColumnCount = 16;
+    private const int ColumnCount = 14;
     private const string PrimaryBlue = "#0B5CAD";
     private const string DarkBlue = "#073B73";
     private const string LightBlue = "#EAF4FF";
@@ -51,8 +49,6 @@ public sealed class ProductionActivityExcelExporter
         "Employee No",
         "Activity",
         "Detail",
-        "Actual Qty",
-        "Reject Qty",
         "Status"
     ];
 
@@ -110,16 +106,12 @@ public sealed class ProductionActivityExcelExporter
 
         worksheet.Range(4, 1, 5, 3).Merge();
         worksheet.Range(4, 4, 5, 6).Merge();
-        worksheet.Range(4, 7, 5, 8).Merge();
-        worksheet.Range(4, 9, 5, 10).Merge();
-        worksheet.Range(4, 11, 5, 13).Merge();
-        worksheet.Range(4, 14, 5, 16).Merge();
+        worksheet.Range(4, 7, 5, 9).Merge();
+        worksheet.Range(4, 10, 5, 14).Merge();
         StyleInfoCard(worksheet.Range(4, 1, 5, 3));
         StyleInfoCard(worksheet.Range(4, 4, 5, 6));
-        StyleInfoCard(worksheet.Range(4, 7, 5, 8));
-        StyleInfoCard(worksheet.Range(4, 9, 5, 10));
-        StyleInfoCard(worksheet.Range(4, 11, 5, 13));
-        StyleInfoCard(worksheet.Range(4, 14, 5, 16));
+        StyleInfoCard(worksheet.Range(4, 7, 5, 9));
+        StyleInfoCard(worksheet.Range(4, 10, 5, 14));
 
         var headerRange = worksheet.Range(HeaderRow, 1, HeaderRow, ColumnCount);
         headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml(PrimaryBlue);
@@ -150,9 +142,7 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Column(11).Width = 17;
         worksheet.Column(12).Width = 17;
         worksheet.Column(13).Width = 21;
-        worksheet.Column(14).Width = 13;
-        worksheet.Column(15).Width = 17;
-        worksheet.Column(16).Width = 12;
+        worksheet.Column(14).Width = 12;
         worksheet.SheetView.FreezeRows(HeaderRow);
 
         workbook.Worksheets.Add(SummarySheetName);
@@ -175,9 +165,7 @@ public sealed class ProductionActivityExcelExporter
         WriteMetric(worksheet.Cell(4, 1), "Period", FormatPeriod(context));
         WriteMetric(worksheet.Cell(4, 4), "Generated", context.GeneratedAt.ToString("dd MMM yyyy HH:mm"));
         WriteMetric(worksheet.Cell(4, 7), "Total Activity", rows.Count.ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 9), "Total Work Order", rows.Select(x => x.WorkOrder).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count().ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 11), "Total Actual", rows.Sum(x => x.ActualQty).ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 14), "Total Reject", rows.Sum(x => x.RejectQty).ToString("#,##0"));
+        WriteMetric(worksheet.Cell(4, 10), "Total Work Order", rows.Select(x => x.WorkOrder).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count().ToString("#,##0"));
         worksheet.Row(4).Height = 20;
         worksheet.Row(5).Height = 20;
     }
@@ -261,9 +249,7 @@ public sealed class ProductionActivityExcelExporter
             worksheet.Cell(excelRow, 11).Value = row.EmployeeNo;
             worksheet.Cell(excelRow, 12).Value = row.Activity;
             worksheet.Cell(excelRow, 13).Value = row.Remarks;
-            worksheet.Cell(excelRow, 14).Value = row.ActualQty;
-            worksheet.Cell(excelRow, 15).Value = row.RejectQty;
-            worksheet.Cell(excelRow, 16).Value = row.Status;
+            worksheet.Cell(excelRow, 14).Value = row.Status;
         }
 
         var dataRange = worksheet.Range(HeaderRow + 1, 1, HeaderRow + rows.Count, ColumnCount);
@@ -286,10 +272,8 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Column(2).Style.DateFormat.Format = "dd mmm yyyy";
         worksheet.Column(3).Style.DateFormat.Format = "hh:mm";
         worksheet.Column(7).Style.NumberFormat.Format = "#,##0.000";
-        worksheet.Columns(14, 15).Style.NumberFormat.Format = "#,##0";
         worksheet.Columns(1, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         worksheet.Columns(7, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        worksheet.Columns(14, 15).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         worksheet.Range(HeaderRow, 1, HeaderRow + rows.Count, ColumnCount).SetAutoFilter();
     }
 
@@ -320,8 +304,6 @@ public sealed class ProductionActivityExcelExporter
 
         worksheet.Cell(6, 1).Value = "Activity";
         worksheet.Cell(6, 2).Value = "Count";
-        worksheet.Cell(6, 3).Value = "Actual Qty";
-        worksheet.Cell(6, 4).Value = "Reject Qty";
 
         var summaryRows = rows
             .GroupBy(x => x.Activity)
@@ -335,18 +317,16 @@ public sealed class ProductionActivityExcelExporter
             var rowNumber = 7 + index;
             worksheet.Cell(rowNumber, 1).Value = group.Key;
             worksheet.Cell(rowNumber, 2).Value = group.Count();
-            worksheet.Cell(rowNumber, 3).Value = group.Sum(x => x.ActualQty);
-            worksheet.Cell(rowNumber, 4).Value = group.Sum(x => x.RejectQty);
         }
 
         var lastSummaryRow = Math.Max(7, 6 + summaryRows.Count);
-        worksheet.Range(6, 1, lastSummaryRow, 4).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        worksheet.Range(6, 1, lastSummaryRow, 4).Style.Border.OutsideBorderColor = XLColor.FromHtml(BorderBlue);
-        worksheet.Range(6, 1, lastSummaryRow, 4).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
-        worksheet.Range(6, 1, lastSummaryRow, 4).Style.Border.InsideBorderColor = XLColor.FromHtml("#DCEBFA");
-        worksheet.Range(6, 1, 6, 4).Style.Fill.BackgroundColor = XLColor.FromHtml(PrimaryBlue);
-        worksheet.Range(6, 1, 6, 4).Style.Font.FontColor = XLColor.White;
-        worksheet.Range(6, 1, 6, 4).Style.Font.Bold = true;
+        worksheet.Range(6, 1, lastSummaryRow, 2).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        worksheet.Range(6, 1, lastSummaryRow, 2).Style.Border.OutsideBorderColor = XLColor.FromHtml(BorderBlue);
+        worksheet.Range(6, 1, lastSummaryRow, 2).Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+        worksheet.Range(6, 1, lastSummaryRow, 2).Style.Border.InsideBorderColor = XLColor.FromHtml("#DCEBFA");
+        worksheet.Range(6, 1, 6, 2).Style.Fill.BackgroundColor = XLColor.FromHtml(PrimaryBlue);
+        worksheet.Range(6, 1, 6, 2).Style.Font.FontColor = XLColor.White;
+        worksheet.Range(6, 1, 6, 2).Style.Font.Bold = true;
         worksheet.Columns(1, 5).AdjustToContents();
     }
 }
