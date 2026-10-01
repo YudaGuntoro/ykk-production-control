@@ -9,7 +9,6 @@ public sealed record ProductionActivityReportRow(
     string ProjectNo,
     decimal? Weight,
     string LineCode,
-    string AreaName,
     string ShiftName,
     string OperatorName,
     string EmployeeNo,
@@ -29,7 +28,7 @@ public sealed class ProductionActivityExcelExporter
     private const string SheetName = "Activity Report";
     private const string SummarySheetName = "Summary";
     private const int HeaderRow = 8;
-    private const int ColumnCount = 17;
+    private const int ColumnCount = 16;
     private const string PrimaryBlue = "#0B5CAD";
     private const string DarkBlue = "#073B73";
     private const string LightBlue = "#EAF4FF";
@@ -47,7 +46,6 @@ public sealed class ProductionActivityExcelExporter
         "Project No",
         "Weight",
         "Line",
-        "Area",
         "Shift",
         "Operator",
         "Employee No",
@@ -112,16 +110,16 @@ public sealed class ProductionActivityExcelExporter
 
         worksheet.Range(4, 1, 5, 3).Merge();
         worksheet.Range(4, 4, 5, 6).Merge();
-        worksheet.Range(4, 7, 5, 9).Merge();
-        worksheet.Range(4, 10, 5, 12).Merge();
-        worksheet.Range(4, 13, 5, 15).Merge();
-        worksheet.Range(4, 16, 5, 18).Merge();
+        worksheet.Range(4, 7, 5, 8).Merge();
+        worksheet.Range(4, 9, 5, 10).Merge();
+        worksheet.Range(4, 11, 5, 13).Merge();
+        worksheet.Range(4, 14, 5, 16).Merge();
         StyleInfoCard(worksheet.Range(4, 1, 5, 3));
         StyleInfoCard(worksheet.Range(4, 4, 5, 6));
-        StyleInfoCard(worksheet.Range(4, 7, 5, 9));
-        StyleInfoCard(worksheet.Range(4, 10, 5, 12));
-        StyleInfoCard(worksheet.Range(4, 13, 5, 15));
-        StyleInfoCard(worksheet.Range(4, 16, 5, 18));
+        StyleInfoCard(worksheet.Range(4, 7, 5, 8));
+        StyleInfoCard(worksheet.Range(4, 9, 5, 10));
+        StyleInfoCard(worksheet.Range(4, 11, 5, 13));
+        StyleInfoCard(worksheet.Range(4, 14, 5, 16));
 
         var headerRange = worksheet.Range(HeaderRow, 1, HeaderRow, ColumnCount);
         headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml(PrimaryBlue);
@@ -147,15 +145,14 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Column(6).Width = 15;
         worksheet.Column(7).Width = 16;
         worksheet.Column(8).Width = 15;
-        worksheet.Column(9).Width = 24;
-        worksheet.Column(10).Width = 11;
-        worksheet.Column(11).Width = 10;
-        worksheet.Column(12).Width = 18;
-        worksheet.Column(13).Width = 17;
-        worksheet.Column(14).Width = 21;
-        worksheet.Column(15).Width = 13;
-        worksheet.Column(16).Width = 17;
-        worksheet.Column(17).Width = 12;
+        worksheet.Column(9).Width = 11;
+        worksheet.Column(10).Width = 18;
+        worksheet.Column(11).Width = 17;
+        worksheet.Column(12).Width = 17;
+        worksheet.Column(13).Width = 21;
+        worksheet.Column(14).Width = 13;
+        worksheet.Column(15).Width = 17;
+        worksheet.Column(16).Width = 12;
         worksheet.SheetView.FreezeRows(HeaderRow);
 
         workbook.Worksheets.Add(SummarySheetName);
@@ -178,9 +175,9 @@ public sealed class ProductionActivityExcelExporter
         WriteMetric(worksheet.Cell(4, 1), "Period", FormatPeriod(context));
         WriteMetric(worksheet.Cell(4, 4), "Generated", context.GeneratedAt.ToString("dd MMM yyyy HH:mm"));
         WriteMetric(worksheet.Cell(4, 7), "Total Activity", rows.Count.ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 10), "Total Work Order", rows.Select(x => x.WorkOrder).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count().ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 13), "Total Actual", rows.Sum(x => x.ActualQty).ToString("#,##0"));
-        WriteMetric(worksheet.Cell(4, 16), "Total Reject", rows.Sum(x => x.RejectQty).ToString("#,##0"));
+        WriteMetric(worksheet.Cell(4, 9), "Total Work Order", rows.Select(x => x.WorkOrder).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count().ToString("#,##0"));
+        WriteMetric(worksheet.Cell(4, 11), "Total Actual", rows.Sum(x => x.ActualQty).ToString("#,##0"));
+        WriteMetric(worksheet.Cell(4, 14), "Total Reject", rows.Sum(x => x.RejectQty).ToString("#,##0"));
         worksheet.Row(4).Height = 20;
         worksheet.Row(5).Height = 20;
     }
@@ -259,15 +256,14 @@ public sealed class ProductionActivityExcelExporter
             worksheet.Cell(excelRow, 6).Value = row.ProjectNo;
             worksheet.Cell(excelRow, 7).Value = row.Weight;
             worksheet.Cell(excelRow, 8).Value = row.LineCode;
-            worksheet.Cell(excelRow, 9).Value = row.AreaName;
-            worksheet.Cell(excelRow, 10).Value = row.ShiftName;
-            worksheet.Cell(excelRow, 11).Value = row.OperatorName;
-            worksheet.Cell(excelRow, 12).Value = row.EmployeeNo;
-            worksheet.Cell(excelRow, 13).Value = row.Activity;
-            worksheet.Cell(excelRow, 14).Value = row.Remarks;
-            worksheet.Cell(excelRow, 15).Value = row.ActualQty;
-            worksheet.Cell(excelRow, 16).Value = row.RejectQty;
-            worksheet.Cell(excelRow, 17).Value = row.Status;
+            worksheet.Cell(excelRow, 9).Value = row.ShiftName;
+            worksheet.Cell(excelRow, 10).Value = row.OperatorName;
+            worksheet.Cell(excelRow, 11).Value = row.EmployeeNo;
+            worksheet.Cell(excelRow, 12).Value = row.Activity;
+            worksheet.Cell(excelRow, 13).Value = row.Remarks;
+            worksheet.Cell(excelRow, 14).Value = row.ActualQty;
+            worksheet.Cell(excelRow, 15).Value = row.RejectQty;
+            worksheet.Cell(excelRow, 16).Value = row.Status;
         }
 
         var dataRange = worksheet.Range(HeaderRow + 1, 1, HeaderRow + rows.Count, ColumnCount);
@@ -290,10 +286,10 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Column(2).Style.DateFormat.Format = "dd mmm yyyy";
         worksheet.Column(3).Style.DateFormat.Format = "hh:mm";
         worksheet.Column(7).Style.NumberFormat.Format = "#,##0.000";
-        worksheet.Columns(15, 16).Style.NumberFormat.Format = "#,##0";
+        worksheet.Columns(14, 15).Style.NumberFormat.Format = "#,##0";
         worksheet.Columns(1, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         worksheet.Columns(7, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        worksheet.Columns(15, 16).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        worksheet.Columns(14, 15).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         worksheet.Range(HeaderRow, 1, HeaderRow + rows.Count, ColumnCount).SetAutoFilter();
     }
 

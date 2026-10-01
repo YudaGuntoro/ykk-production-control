@@ -159,7 +159,6 @@ public sealed class ProductionHistoryExcelExporter
         WriteDetailField(worksheet, 7, 5, "Lot No", row.LotNo ?? "-");
         WriteDetailField(worksheet, 8, 1, "Weight", row.Weight?.ToString("#,##0.000") ?? "-");
         WriteDetailField(worksheet, 8, 5, "Line", row.LineCode);
-        WriteDetailField(worksheet, 9, 1, "Unit", row.Unit);
 
         WriteDetailSectionTitle(worksheet, 11, "Timeline");
         WriteTimelineHeader(worksheet, 12);

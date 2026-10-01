@@ -307,9 +307,6 @@ public class CuttingListResponse
     [JsonPropertyName("planned_qty")]
     public int PlannedQty { get; set; }
 
-    [JsonPropertyName("unit")]
-    public string Unit { get; set; } = "PCS";
-
     [JsonPropertyName("plan_date")]
     public DateTime PlanDate { get; set; }
 
