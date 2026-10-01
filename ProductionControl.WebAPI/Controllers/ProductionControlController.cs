@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 
 namespace ProductionControl.WebAPI.Controllers;
@@ -20,6 +21,8 @@ public class ProductionControlController : ApiControllerBase
     private const string ShiageLotNoSettingKey = "shiage_lot_no";
     private const string InternalSystemAuthSettingKey = "internal_system_auth";
     private const string InternalSystemRefreshSettingKey = "internal_system_refresh";
+    private static readonly SemaphoreSlim ExternalTokenLock = new(1, 1);
+    private static ExternalAuthToken? CachedExternalToken;
 
     public ProductionControlController(
         ProductionControlDbContext db,
@@ -337,6 +340,15 @@ public class ProductionControlController : ApiControllerBase
             var refresh = response.IsSuccessStatusCode && refreshToken is not null
                 ? await TestInternalSystemRefresh(refreshToken, baseUrl)
                 : null;
+
+            if (response.IsSuccessStatusCode && token is not null)
+            {
+                CachedExternalToken = new ExternalAuthToken(
+                    token,
+                    refreshToken,
+                    ResolveTokenExpiry(token),
+                    $"{baseUrl}|{username}");
+            }
 
             return ApiOk(new InternalSystemLoginTestResponse
             {
@@ -1802,19 +1814,31 @@ public class ProductionControlController : ApiControllerBase
     private async Task<HttpResponseMessage> SendShiageRequest(string url)
     {
         var client = _httpClientFactory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
         var token = await GetExternalAccessToken();
+        var response = await client.SendAsync(CreateShiageRequest(url, token));
+        if ((int)response.StatusCode != 401)
+        {
+            return response;
+        }
+
+        response.Dispose();
+        token = await GetExternalAccessToken(forceRefresh: true);
+        return await client.SendAsync(CreateShiageRequest(url, token));
+    }
+
+    private static HttpRequestMessage CreateShiageRequest(string url, string? token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (!string.IsNullOrWhiteSpace(token))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
-        return await client.SendAsync(request);
+        return request;
     }
 
-    private async Task<string?> GetExternalAccessToken()
+    private async Task<string?> GetExternalAccessToken(bool forceRefresh = false)
     {
         var authSetting = await GetIntegrationSettingEntity(InternalSystemAuthSettingKey);
         if (!authSetting.IsActive)
@@ -1832,6 +1856,52 @@ public class ProductionControlController : ApiControllerBase
             return null;
         }
 
+        var cacheKey = $"{baseUrl}|{username}";
+        if (!forceRefresh && CachedExternalToken is { } cachedToken &&
+            cachedToken.CacheKey == cacheKey &&
+            cachedToken.ExpiresAt > DateTimeOffset.Now.AddMinutes(1))
+        {
+            return cachedToken.AccessToken;
+        }
+
+        await ExternalTokenLock.WaitAsync();
+        try
+        {
+            if (!forceRefresh && CachedExternalToken is { } lockedToken &&
+                lockedToken.CacheKey == cacheKey &&
+                lockedToken.ExpiresAt > DateTimeOffset.Now.AddMinutes(1))
+            {
+                return lockedToken.AccessToken;
+            }
+
+            if (CachedExternalToken is { RefreshToken: { Length: > 0 } refreshToken } &&
+                CachedExternalToken.CacheKey == cacheKey)
+            {
+                var refreshedToken = await RefreshExternalAccessToken(refreshToken, baseUrl, cacheKey);
+                if (refreshedToken is not null)
+                {
+                    CachedExternalToken = refreshedToken;
+                    return refreshedToken.AccessToken;
+                }
+            }
+
+            var loggedInToken = await LoginExternalAccessToken(baseUrl, endpointPath, username, password, cacheKey);
+            CachedExternalToken = loggedInToken;
+            return loggedInToken.AccessToken;
+        }
+        finally
+        {
+            ExternalTokenLock.Release();
+        }
+    }
+
+    private async Task<ExternalAuthToken> LoginExternalAccessToken(
+        string baseUrl,
+        string endpointPath,
+        string username,
+        string password,
+        string cacheKey)
+    {
         var url = $"{baseUrl}{endpointPath}";
         using var response = await _httpClientFactory.CreateClient().PostAsJsonAsync(url, new
         {
@@ -1845,7 +1915,92 @@ public class ProductionControlController : ApiControllerBase
             throw new InvalidOperationException($"Login external failed with status {(int)response.StatusCode}: {content}");
         }
 
-        return GetInternalLoginToken(content);
+        var token = GetInternalLoginToken(content);
+        if (token is null)
+        {
+            throw new InvalidOperationException("Login external succeeded but access token was not found.");
+        }
+
+        return new ExternalAuthToken(
+            token,
+            GetInternalRefreshToken(content),
+            ResolveTokenExpiry(token),
+            cacheKey);
+    }
+
+    private async Task<ExternalAuthToken?> RefreshExternalAccessToken(string refreshToken, string authBaseUrl, string cacheKey)
+    {
+        var storedRefreshSetting = await GetIntegrationSettingEntity(InternalSystemRefreshSettingKey);
+        if (!storedRefreshSetting.IsActive)
+        {
+            return null;
+        }
+
+        var refreshBaseUrl = NormalizeBaseUrl(storedRefreshSetting.BaseUrl) ?? authBaseUrl;
+        var refreshEndpointPath = NormalizeEndpointPath(
+            storedRefreshSetting.EndpointPath,
+            storedRefreshSetting.EndpointPath is { Length: > 0 }
+                ? storedRefreshSetting.EndpointPath
+                : GetDefaultEndpointPath(InternalSystemRefreshSettingKey));
+        var separator = refreshEndpointPath.Contains('?') ? "&" : "?";
+        var refreshUrl = $"{refreshBaseUrl}{refreshEndpointPath}{separator}refresh_token={Uri.EscapeDataString(refreshToken)}";
+
+        using var response = await _httpClientFactory.CreateClient().PostAsync(refreshUrl, null);
+        var content = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var token = GetInternalLoginToken(content);
+        if (token is null)
+        {
+            return null;
+        }
+
+        return new ExternalAuthToken(
+            token,
+            GetInternalRefreshToken(content) ?? refreshToken,
+            ResolveTokenExpiry(token),
+            cacheKey);
+    }
+
+    private static DateTimeOffset ResolveTokenExpiry(string token)
+    {
+        var jwtExpiry = TryGetJwtExpiry(token);
+        return jwtExpiry is not null && jwtExpiry > DateTimeOffset.Now
+            ? jwtExpiry.Value
+            : DateTimeOffset.Now.AddMinutes(50);
+    }
+
+    private static DateTimeOffset? TryGetJwtExpiry(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = parts[1]
+                .Replace('-', '+')
+                .Replace('_', '/');
+            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("exp", out var expElement) &&
+                expElement.TryGetInt64(out var exp))
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(exp);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
     }
 
     private static JsonElement? ResolveShiageDataElement(JsonElement root)
@@ -2046,6 +2201,12 @@ public class ProductionControlController : ApiControllerBase
         string? ProjectName,
         string? Line,
         DateTime? CutPlan);
+
+    private sealed record ExternalAuthToken(
+        string AccessToken,
+        string? RefreshToken,
+        DateTimeOffset ExpiresAt,
+        string CacheKey);
 
     private async Task<int?> UpsertProjectMaster(string? projectNo, string? projectName)
     {
