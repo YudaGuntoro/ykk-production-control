@@ -132,7 +132,8 @@ public class ProductionControlController : ApiControllerBase
     {
         try
         {
-            var code = (request.LotNo ?? request.OrderNumber).Trim();
+            var rawScanCode = NormalizeText(request.LotNo) ?? NormalizeText(request.OrderNumber);
+            var code = ExtractLotNoFromScan(rawScanCode);
             if (string.IsNullOrWhiteSpace(code))
             {
                 throw new ArgumentException("Lot No is required.");
@@ -184,7 +185,8 @@ public class ProductionControlController : ApiControllerBase
                 shiageResult.ProjectNo,
                 shiageResult.Weight,
                 shiageResult.ProjectName);
-            AddLog(order.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {code}");
+            var logCode = rawScanCode == code ? code : $"{rawScanCode} -> {code}";
+            AddLog(order.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {logCode}");
             await _db.SaveChangesAsync();
             await ReloadWorkOrder(order);
 
@@ -2120,6 +2122,29 @@ public class ProductionControlController : ApiControllerBase
 
     private static string? NormalizeText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? ExtractLotNoFromScan(string? value)
+    {
+        var normalized = NormalizeText(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        var firstWhitespaceIndex = normalized.IndexOfAny([' ', '\t', '\r', '\n']);
+        if (firstWhitespaceIndex < 0)
+        {
+            return normalized;
+        }
+
+        var afterPrefix = normalized[(firstWhitespaceIndex + 1)..].TrimStart();
+        if (afterPrefix.Length == 0)
+        {
+            return normalized;
+        }
+
+        return afterPrefix.Length > 10 ? afterPrefix[..10] : afterPrefix;
+    }
 
     private static TimeSpan? ParseSchedule(string? value)
     {
