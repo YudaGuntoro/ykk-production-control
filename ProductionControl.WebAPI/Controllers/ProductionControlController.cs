@@ -626,6 +626,7 @@ public class ProductionControlController : ApiControllerBase
             order.ShiftMasterId = currentShift?.Id;
             order.AreaMasterId = line.Id;
             order.AreaMaster = line;
+            order.LineCode = line.AreaCode;
             order.UpdatedAt = DateTime.Now;
             await ReplaceOperatorSnapshots(
                 order.Id,
@@ -2586,7 +2587,7 @@ public class ProductionControlController : ApiControllerBase
         return new CuttingListResponse
         {
             Id = order.Id,
-            LineCode = order.LineCode,
+            LineCode = GetLineDisplay(order),
             PlannedQty = order.TargetQty,
             PlanDate = order.PlanDate,
             Status = ProductionStatusMaster.ToCuttingListStatus(order.StatusMasterId),
@@ -2658,6 +2659,20 @@ public class ProductionControlController : ApiControllerBase
                 ScannedAt = x.ScannedAt
             })
             .ToList();
+    }
+
+    private static string GetLineDisplay(ProductionWorkOrder order)
+    {
+        var lineNo = NormalizeText(order.AreaMaster?.AreaCode);
+        var lineName = NormalizeText(order.AreaMaster?.AreaName);
+        if (lineNo is null)
+        {
+            return order.LineCode;
+        }
+
+        return lineName is null || string.Equals(lineNo, lineName, StringComparison.OrdinalIgnoreCase)
+            ? lineNo
+            : $"{lineNo} - {lineName}";
     }
 
     private static List<ProductionOperatorResponse> ToOperatorResponses(
