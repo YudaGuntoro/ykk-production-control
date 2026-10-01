@@ -1401,7 +1401,7 @@ public class ProductionControlController : ApiControllerBase
             .ToListAsync();
 
         var rows = logs.Select(ToActivityReportRow).ToList();
-        var exporter = new ProductionActivityExcelExporter(_environment.ContentRootPath);
+        var exporter = new ProductionActivityExcelExporter();
         var fileContent = exporter.Export(rows, new ProductionActivityReportContext(
             range.DisplayStart,
             range.DisplayEnd,
@@ -1416,10 +1416,6 @@ public class ProductionControlController : ApiControllerBase
 
     private IQueryable<ProductionActivityLog> ActivityLogReportQuery() =>
         _db.ProductionActivityLogs.AsNoTracking()
-            .Include(x => x.ProductionWorkOrder!)
-                .ThenInclude(x => x.ShiftMaster)
-            .Include(x => x.ProductionWorkOrder!)
-                .ThenInclude(x => x.AreaMaster)
             .Include(x => x.ProductionWorkOrder!)
                 .ThenInclude(x => x.ReleaseProductionOrderDetail)
             .Include(x => x.User);
@@ -1495,9 +1491,6 @@ public class ProductionControlController : ApiControllerBase
         var order = log.ProductionWorkOrder;
         var rpo = order?.ReleaseProductionOrderDetail;
         var user = log.User;
-        var shiftText = order?.ShiftMaster is null
-            ? "-"
-            : $"{order.ShiftMaster.ShiftCode} - {order.ShiftMaster.ShiftName}";
 
         return new ProductionActivityReportRow(
             log.CreatedAt,
@@ -1505,13 +1498,9 @@ public class ProductionControlController : ApiControllerBase
             rpo?.LotNo ?? "-",
             rpo?.ProjectNo ?? "-",
             rpo?.Weight,
-            order?.LineCode ?? "-",
-            shiftText,
             user?.FullName ?? user?.Username ?? "System",
-            user?.Username ?? "-",
             log.ActivityType.ToString().Replace("_", " "),
-            log.Remarks ?? "-",
-            order?.Status.ToString().Replace("_", " ") ?? "-");
+            log.Remarks ?? "-");
     }
 
     private sealed record ActivityLogDateRange(
