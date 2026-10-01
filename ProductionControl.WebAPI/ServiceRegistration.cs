@@ -196,12 +196,12 @@ public static class ServiceRegistration
             }
 
             EnsureProductionWorkOrderSchema(connection);
+            EnsureProductionIntegrationSettings(connection);
             EnsureUserRoleSchema(connection);
             EnsureReleaseProductionOrderDetailSchema(connection);
             EnsureProductionOperatorSchema(connection);
             EnsureProductionActivityLogSchema(connection);
             DropLegacyProductionLineMaster(connection);
-            EnsureProductionIntegrationSettings(connection);
         }
         catch (Exception ex)
         {
