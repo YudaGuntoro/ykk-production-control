@@ -407,6 +407,7 @@ public class ProductionControlController : ApiControllerBase
         var normalizedLotNo = NormalizeText(lotNo);
         var query = _db.ReleaseProductionOrderDetails.AsNoTracking()
             .Include(x => x.ProductionWorkOrder)
+            .Include(x => x.ProjectMaster)
             .AsQueryable();
 
         if (normalizedLotNo is not null)
@@ -421,6 +422,7 @@ public class ProductionControlController : ApiControllerBase
             .Select(x => new FabShiageProductionResultResponse
             {
                 ProjectNo = x.ProjectNo,
+                ProjectName = x.ProjectMaster == null ? null : x.ProjectMaster.ProjectName,
                 OrderNo = x.OrderNo ?? (x.ProductionWorkOrder == null ? null : x.ProductionWorkOrder.OrderNumber),
                 LotNo = x.LotNo,
                 Weight = x.Weight
@@ -1377,6 +1379,9 @@ public class ProductionControlController : ApiControllerBase
                 project_no = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null
                     ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.ProjectNo
                     : null,
+                project_name = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail.ProjectMaster != null
+                    ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.ProjectMaster.ProjectName
+                    : null,
                 weight = x.ProductionWorkOrder != null && x.ProductionWorkOrder.ReleaseProductionOrderDetail != null
                     ? x.ProductionWorkOrder.ReleaseProductionOrderDetail.Weight
                     : null,
@@ -1418,6 +1423,7 @@ public class ProductionControlController : ApiControllerBase
         _db.ProductionActivityLogs.AsNoTracking()
             .Include(x => x.ProductionWorkOrder!)
                 .ThenInclude(x => x.ReleaseProductionOrderDetail)
+                    .ThenInclude(x => x!.ProjectMaster)
             .Include(x => x.User);
 
     private static IQueryable<ProductionActivityLog> ApplyActivityLogFilters(
@@ -1497,6 +1503,7 @@ public class ProductionControlController : ApiControllerBase
             order?.OrderNumber ?? $"Order #{log.ProductionWorkOrderId}",
             rpo?.LotNo ?? "-",
             rpo?.ProjectNo ?? "-",
+            rpo?.ProjectMaster?.ProjectName ?? "-",
             rpo?.Weight,
             user?.FullName ?? user?.Username ?? "System",
             log.ActivityType.ToString().Replace("_", " "),
@@ -1514,6 +1521,7 @@ public class ProductionControlController : ApiControllerBase
             .Include(x => x.ShiftMaster)
             .Include(x => x.AreaMaster)
             .Include(x => x.ReleaseProductionOrderDetail)
+                .ThenInclude(x => x!.ProjectMaster)
             .Include(x => x.Operators)
                 .ThenInclude(x => x.PicCard)
             .Include(x => x.Operators)
@@ -2185,6 +2193,7 @@ public class ProductionControlController : ApiControllerBase
             FinishOperators = finishOperators,
             LotNo = rpo?.LotNo,
             ProjectNo = rpo?.ProjectNo,
+            ProjectName = rpo?.ProjectMaster?.ProjectName,
             Weight = rpo?.Weight
         };
     }

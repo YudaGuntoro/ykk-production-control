@@ -7,6 +7,7 @@ public sealed record ProductionActivityReportRow(
     string WorkOrder,
     string LotNo,
     string ProjectNo,
+    string ProjectName,
     decimal? Weight,
     string OperatorName,
     string Activity,
@@ -22,7 +23,7 @@ public sealed class ProductionActivityExcelExporter
     private const string SheetName = "Activity Report";
     private const string SummarySheetName = "Summary";
     private const int HeaderRow = 8;
-    private const int ColumnCount = 10;
+    private const int ColumnCount = 11;
     private const string PrimaryBlue = "#0B5CAD";
     private const string DarkBlue = "#073B73";
     private const string LightBlue = "#EAF4FF";
@@ -38,6 +39,7 @@ public sealed class ProductionActivityExcelExporter
         "Work Order",
         "Lot No",
         "Project No",
+        "Project Name",
         "Weight",
         "Activity",
         "Detail",
@@ -99,11 +101,11 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Range(4, 1, 5, 3).Merge();
         worksheet.Range(4, 4, 5, 6).Merge();
         worksheet.Range(4, 7, 5, 8).Merge();
-        worksheet.Range(4, 9, 5, 10).Merge();
+        worksheet.Range(4, 9, 5, 11).Merge();
         StyleInfoCard(worksheet.Range(4, 1, 5, 3));
         StyleInfoCard(worksheet.Range(4, 4, 5, 6));
         StyleInfoCard(worksheet.Range(4, 7, 5, 8));
-        StyleInfoCard(worksheet.Range(4, 9, 5, 10));
+        StyleInfoCard(worksheet.Range(4, 9, 5, 11));
 
         var headerRange = worksheet.Range(HeaderRow, 1, HeaderRow, ColumnCount);
         headerRange.Style.Fill.BackgroundColor = XLColor.FromHtml(PrimaryBlue);
@@ -127,10 +129,11 @@ public sealed class ProductionActivityExcelExporter
         worksheet.Column(4).Width = 21;
         worksheet.Column(5).Width = 21;
         worksheet.Column(6).Width = 15;
-        worksheet.Column(7).Width = 16;
-        worksheet.Column(8).Width = 17;
-        worksheet.Column(9).Width = 24;
-        worksheet.Column(10).Width = 18;
+        worksheet.Column(7).Width = 24;
+        worksheet.Column(8).Width = 16;
+        worksheet.Column(9).Width = 17;
+        worksheet.Column(10).Width = 24;
+        worksheet.Column(11).Width = 18;
         worksheet.SheetView.FreezeRows(HeaderRow);
 
         workbook.Worksheets.Add(SummarySheetName);
@@ -230,10 +233,11 @@ public sealed class ProductionActivityExcelExporter
             worksheet.Cell(excelRow, 4).Value = row.WorkOrder;
             worksheet.Cell(excelRow, 5).Value = row.LotNo;
             worksheet.Cell(excelRow, 6).Value = row.ProjectNo;
-            worksheet.Cell(excelRow, 7).Value = row.Weight;
-            worksheet.Cell(excelRow, 8).Value = row.Activity;
-            worksheet.Cell(excelRow, 9).Value = row.Remarks;
-            worksheet.Cell(excelRow, 10).Value = row.OperatorName;
+            worksheet.Cell(excelRow, 7).Value = row.ProjectName;
+            worksheet.Cell(excelRow, 8).Value = row.Weight;
+            worksheet.Cell(excelRow, 9).Value = row.Activity;
+            worksheet.Cell(excelRow, 10).Value = row.Remarks;
+            worksheet.Cell(excelRow, 11).Value = row.OperatorName;
         }
 
         var dataRange = worksheet.Range(HeaderRow + 1, 1, HeaderRow + rows.Count, ColumnCount);
@@ -255,9 +259,9 @@ public sealed class ProductionActivityExcelExporter
 
         worksheet.Column(2).Style.DateFormat.Format = "dd mmm yyyy";
         worksheet.Column(3).Style.DateFormat.Format = "hh:mm";
-        worksheet.Column(7).Style.NumberFormat.Format = "#,##0.000";
+        worksheet.Column(8).Style.NumberFormat.Format = "#,##0.000";
         worksheet.Columns(1, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        worksheet.Columns(7, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        worksheet.Columns(8, 8).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         worksheet.Range(HeaderRow, 1, HeaderRow + rows.Count, ColumnCount).SetAutoFilter();
     }
 

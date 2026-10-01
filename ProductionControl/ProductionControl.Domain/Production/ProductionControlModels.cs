@@ -340,6 +340,9 @@ public class CuttingListResponse
     [JsonPropertyName("project_no")]
     public string? ProjectNo { get; set; }
 
+    [JsonPropertyName("project_name")]
+    public string? ProjectName { get; set; }
+
     [JsonPropertyName("weight")]
     public decimal? Weight { get; set; }
 }

@@ -12,7 +12,7 @@ public sealed class ProductionHistoryExcelExporter
     private const string SheetName = "Production History";
     private const string DetailSheetName = "Production Detail";
     private const int HeaderRow = 5;
-    private const int ColumnCount = 13;
+    private const int ColumnCount = 14;
     private const int DetailColumnCount = 8;
     private const string PrimaryBlue = "#0B5CAD";
     private const string DarkBlue = "#073B73";
@@ -26,6 +26,7 @@ public sealed class ProductionHistoryExcelExporter
     [
         "No",
         "Project No",
+        "Project Name",
         "Order No",
         "Lot No",
         "Weight",
@@ -102,9 +103,9 @@ public sealed class ProductionHistoryExcelExporter
 
         worksheet.Columns(1, ColumnCount).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         worksheet.Columns(1, ColumnCount).AdjustToContents();
-        worksheet.Column(5).Style.NumberFormat.Format = "#,##0.000";
-        worksheet.Columns(8, 10).Style.DateFormat.Format = "dd mmm yyyy hh:mm";
-        worksheet.Column(5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        worksheet.Column(6).Style.NumberFormat.Format = "#,##0.000";
+        worksheet.Columns(9, 11).Style.DateFormat.Format = "dd mmm yyyy hh:mm";
+        worksheet.Column(6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         worksheet.Columns(1, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         worksheet.SheetView.FreezeRows(HeaderRow);
         worksheet.Range(HeaderRow, 1, HeaderRow + Math.Max(rows.Count, 1), ColumnCount).SetAutoFilter();
@@ -155,19 +156,20 @@ public sealed class ProductionHistoryExcelExporter
         WriteDetailSectionTitle(worksheet, 5, "Production Information");
         WriteDetailField(worksheet, 6, 1, "Status", row.Status.ToString().Replace("_", " "));
         WriteDetailField(worksheet, 6, 5, "Project No", row.ProjectNo ?? "-");
-        WriteDetailField(worksheet, 7, 1, "Order No", row.OrderNumber ?? "-");
-        WriteDetailField(worksheet, 7, 5, "Lot No", row.LotNo ?? "-");
-        WriteDetailField(worksheet, 8, 1, "Weight", row.Weight?.ToString("#,##0.000") ?? "-");
-        WriteDetailField(worksheet, 8, 5, "Line", row.LineCode);
+        WriteDetailField(worksheet, 7, 1, "Project Name", row.ProjectName ?? "-");
+        WriteDetailField(worksheet, 7, 5, "Order No", row.OrderNumber ?? "-");
+        WriteDetailField(worksheet, 8, 1, "Lot No", row.LotNo ?? "-");
+        WriteDetailField(worksheet, 8, 5, "Weight", row.Weight?.ToString("#,##0.000") ?? "-");
+        WriteDetailField(worksheet, 9, 1, "Line", row.LineCode);
 
-        WriteDetailSectionTitle(worksheet, 11, "Timeline");
-        WriteTimelineHeader(worksheet, 12);
-        WriteTimelineRow(worksheet, 13, "Scanned Date", row.CreatedAt);
-        WriteTimelineRow(worksheet, 14, "Start WO", row.StartedAt);
-        WriteTimelineRow(worksheet, 15, "Finish WO", row.CompletedAt);
+        WriteDetailSectionTitle(worksheet, 12, "Timeline");
+        WriteTimelineHeader(worksheet, 13);
+        WriteTimelineRow(worksheet, 14, "Scanned Date", row.CreatedAt);
+        WriteTimelineRow(worksheet, 15, "Start WO", row.StartedAt);
+        WriteTimelineRow(worksheet, 16, "Finish WO", row.CompletedAt);
 
-        WriteOperatorSection(worksheet, 17, "Active Operators", row.Operators);
-        var nextStartRow = 20 + Math.Max(row.Operators.Count, 1);
+        WriteOperatorSection(worksheet, 18, "Active Operators", row.Operators);
+        var nextStartRow = 21 + Math.Max(row.Operators.Count, 1);
         WriteOperatorSection(worksheet, nextStartRow, "Start Operators", row.StartOperators);
         nextStartRow += 3 + Math.Max(row.StartOperators.Count, 1);
         WriteOperatorSection(worksheet, nextStartRow, "Finish Operators", row.FinishOperators);
@@ -198,17 +200,18 @@ public sealed class ProductionHistoryExcelExporter
 
             worksheet.Cell(excelRow, 1).Value = index + 1;
             worksheet.Cell(excelRow, 2).Value = row.ProjectNo ?? "-";
-            worksheet.Cell(excelRow, 3).Value = row.OrderNumber ?? "-";
-            worksheet.Cell(excelRow, 4).Value = row.LotNo ?? "-";
-            worksheet.Cell(excelRow, 5).Value = row.Weight;
-            worksheet.Cell(excelRow, 6).Value = row.LineCode;
-            worksheet.Cell(excelRow, 7).Value = row.Status.ToString().Replace("_", " ");
-            worksheet.Cell(excelRow, 8).Value = row.CreatedAt;
-            worksheet.Cell(excelRow, 9).Value = row.StartedAt;
-            worksheet.Cell(excelRow, 10).Value = row.CompletedAt;
-            worksheet.Cell(excelRow, 11).Value = FormatOperators(row.Operators);
-            worksheet.Cell(excelRow, 12).Value = FormatOperators(row.StartOperators);
-            worksheet.Cell(excelRow, 13).Value = FormatOperators(row.FinishOperators);
+            worksheet.Cell(excelRow, 3).Value = row.ProjectName ?? "-";
+            worksheet.Cell(excelRow, 4).Value = row.OrderNumber ?? "-";
+            worksheet.Cell(excelRow, 5).Value = row.LotNo ?? "-";
+            worksheet.Cell(excelRow, 6).Value = row.Weight;
+            worksheet.Cell(excelRow, 7).Value = row.LineCode;
+            worksheet.Cell(excelRow, 8).Value = row.Status.ToString().Replace("_", " ");
+            worksheet.Cell(excelRow, 9).Value = row.CreatedAt;
+            worksheet.Cell(excelRow, 10).Value = row.StartedAt;
+            worksheet.Cell(excelRow, 11).Value = row.CompletedAt;
+            worksheet.Cell(excelRow, 12).Value = FormatOperators(row.Operators);
+            worksheet.Cell(excelRow, 13).Value = FormatOperators(row.StartOperators);
+            worksheet.Cell(excelRow, 14).Value = FormatOperators(row.FinishOperators);
 
             if (index % 2 == 1)
             {
