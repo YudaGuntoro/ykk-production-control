@@ -832,6 +832,33 @@ public class InternalSystemLoginTestResponse
     [JsonPropertyName("token_preview")]
     public string? TokenPreview { get; set; }
 
+    [JsonPropertyName("refresh_token_preview")]
+    public string? RefreshTokenPreview { get; set; }
+
+    [JsonPropertyName("refresh")]
+    public InternalSystemRefreshTestResult? Refresh { get; set; }
+
+    [JsonPropertyName("response_preview")]
+    public string ResponsePreview { get; set; } = string.Empty;
+}
+
+public class InternalSystemRefreshTestResult
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    [JsonPropertyName("status_code")]
+    public int StatusCode { get; set; }
+
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("token_preview")]
+    public string? TokenPreview { get; set; }
+
     [JsonPropertyName("response_preview")]
     public string ResponsePreview { get; set; } = string.Empty;
 }

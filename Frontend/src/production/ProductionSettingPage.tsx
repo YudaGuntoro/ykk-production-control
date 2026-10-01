@@ -5,7 +5,7 @@ import { useToast } from "@/context/ToastContext";
 import { apiGet, apiPost, apiPut, getApiBaseUrl } from "@/lib/api";
 import { clearStoredApiBaseUrl, getStoredApiBaseUrl, setStoredApiBaseUrl } from "@/lib/runtimeApiConfig";
 
-type IntegrationSettingKey = "shiage_lot_no" | "internal_system_auth";
+type IntegrationSettingKey = "shiage_lot_no" | "internal_system_auth" | "internal_system_refresh";
 
 type IntegrationSetting = {
   setting_key: string;
@@ -33,6 +33,15 @@ type InternalLoginTestResult = {
   success: boolean;
   message: string;
   token_preview?: string | null;
+  refresh_token_preview?: string | null;
+  refresh?: {
+    url?: string | null;
+    status_code: number;
+    success: boolean;
+    message: string;
+    token_preview?: string | null;
+    response_preview: string;
+  } | null;
   response_preview: string;
 };
 
@@ -60,6 +69,12 @@ const settingDefinitions: SettingDefinition[] = [
     endpointPlaceholder: "/auth/login",
     showCredentials: true,
   },
+  {
+    key: "internal_system_refresh",
+    title: "Endpoint Refresh Internal System",
+    description: "Dipakai untuk refresh token dari internal system setelah login berhasil.",
+    endpointPlaceholder: "/auth/refresh",
+  },
 ];
 
 const defaultSettings: Record<IntegrationSettingKey, IntegrationSetting> = {
@@ -79,6 +94,18 @@ const defaultSettings: Record<IntegrationSettingKey, IntegrationSetting> = {
     setting_key: "internal_system_auth",
     base_url: "",
     endpoint_path: "/auth/login",
+    username: "",
+    password: "",
+    password_set: false,
+    filter_field_name: "-",
+    top: 1,
+    skip: 0,
+    is_active: true,
+  },
+  internal_system_refresh: {
+    setting_key: "internal_system_refresh",
+    base_url: "",
+    endpoint_path: "/auth/refresh",
     username: "",
     password: "",
     password_set: false,
@@ -166,6 +193,7 @@ export default function ProductionSettingPage() {
           ...current,
           shiage_lot_no: { ...current.shiage_lot_no, ...rows[0] },
           internal_system_auth: { ...current.internal_system_auth, ...rows[1] },
+          internal_system_refresh: { ...current.internal_system_refresh, ...rows[2] },
         }));
       } catch (err) {
         if (alive) {
@@ -405,12 +433,12 @@ export default function ProductionSettingPage() {
               {definition.showCredentials ? (
                 <>
                   <label className="block">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Username</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Email / Username</span>
                     <input
                       autoComplete="off"
                       className={inputClass}
                       onChange={(event) => updateSetting(definition.key, "username", event.target.value)}
-                      placeholder="Masukkan username"
+                      placeholder="Masukkan email atau username"
                       value={setting.username ?? ""}
                     />
                   </label>
@@ -491,9 +519,19 @@ export default function ProductionSettingPage() {
                   <div className="grid gap-2 md:grid-cols-2">
                     <p>Status: <span className={loginTestResult.success ? "text-emerald-600" : "text-rose-600"}>{loginTestResult.status_code}</span></p>
                     <p>Token: {loginTestResult.token_preview || "-"}</p>
+                    <p>Refresh Token: {loginTestResult.refresh_token_preview || "-"}</p>
+                    <p>Refresh Status: {loginTestResult.refresh ? <span className={loginTestResult.refresh.success ? "text-emerald-600" : "text-rose-600"}>{loginTestResult.refresh.status_code}</span> : "-"}</p>
                     <p className="break-all md:col-span-2">URL: {loginTestResult.url}</p>
                     <p className="md:col-span-2">Message: {loginTestResult.message || "-"}</p>
                     <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 font-mono text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-200 md:col-span-2">{loginTestResult.response_preview || "-"}</pre>
+                    {loginTestResult.refresh ? (
+                      <>
+                        <p className="break-all md:col-span-2">Refresh URL: {loginTestResult.refresh.url || "-"}</p>
+                        <p className="md:col-span-2">Refresh Message: {loginTestResult.refresh.message || "-"}</p>
+                        <p className="md:col-span-2">Refresh Token Result: {loginTestResult.refresh.token_preview || "-"}</p>
+                        <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 font-mono text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-200 md:col-span-2">{loginTestResult.refresh.response_preview || "-"}</pre>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

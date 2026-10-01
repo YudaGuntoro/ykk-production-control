@@ -443,7 +443,8 @@ public static class ServiceRegistration
                 (`setting_key`, `base_url`, `endpoint_path`, `auth_username`, `auth_password`, `filter_field_name`, `top`, `skip`, `is_active`)
             VALUES
                 ('shiage_lot_no', '', '/fab-shiage-prod-res/', NULL, NULL, 'LOT_NO', 1, 0, 0),
-                ('internal_system_auth', '', '/auth/login', NULL, NULL, '-', 1, 0, 1)
+                ('internal_system_auth', '', '/auth/login', NULL, NULL, '-', 1, 0, 1),
+                ('internal_system_refresh', '', '/auth/refresh', NULL, NULL, '-', 1, 0, 1)
             ON DUPLICATE KEY UPDATE
                 `endpoint_path` = IF(`endpoint_path` IS NULL OR `endpoint_path` = '', VALUES(`endpoint_path`), `endpoint_path`),
                 `filter_field_name` = IF(`filter_field_name` IS NULL OR `filter_field_name` = '', VALUES(`filter_field_name`), `filter_field_name`),

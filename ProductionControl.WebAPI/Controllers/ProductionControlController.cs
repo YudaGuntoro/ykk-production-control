@@ -18,6 +18,7 @@ public class ProductionControlController : ApiControllerBase
     private readonly IHttpClientFactory _httpClientFactory;
     private const string ShiageLotNoSettingKey = "shiage_lot_no";
     private const string InternalSystemAuthSettingKey = "internal_system_auth";
+    private const string InternalSystemRefreshSettingKey = "internal_system_refresh";
 
     public ProductionControlController(
         ProductionControlDbContext db,
@@ -323,12 +324,16 @@ public class ProductionControlController : ApiControllerBase
             var url = $"{baseUrl}{endpointPath}";
             using var response = await _httpClientFactory.CreateClient().PostAsJsonAsync(url, new
             {
-                username,
+                email = username,
                 password
             });
             var content = await response.Content.ReadAsStringAsync();
             var message = GetInternalLoginMessage(content) ?? response.ReasonPhrase ?? "Login request completed.";
             var token = GetInternalLoginToken(content);
+            var refreshToken = GetInternalRefreshToken(content);
+            var refresh = response.IsSuccessStatusCode && refreshToken is not null
+                ? await TestInternalSystemRefresh(refreshToken, baseUrl)
+                : null;
 
             return ApiOk(new InternalSystemLoginTestResponse
             {
@@ -337,6 +342,8 @@ public class ProductionControlController : ApiControllerBase
                 Success = response.IsSuccessStatusCode,
                 Message = message,
                 TokenPreview = MaskToken(token),
+                RefreshTokenPreview = MaskToken(refreshToken),
+                Refresh = refresh,
                 ResponsePreview = content.Length > 500 ? $"{content[..500]}..." : content
             }, response.IsSuccessStatusCode ? "Login internal system berhasil." : "Login internal system gagal.");
         }
@@ -344,6 +351,43 @@ public class ProductionControlController : ApiControllerBase
         {
             return ApiBadRequest(ex);
         }
+    }
+
+    private async Task<InternalSystemRefreshTestResult> TestInternalSystemRefresh(string refreshToken, string authBaseUrl)
+    {
+        var storedRefreshSetting = await GetIntegrationSettingEntity(InternalSystemRefreshSettingKey);
+        if (!storedRefreshSetting.IsActive)
+        {
+            return new InternalSystemRefreshTestResult
+            {
+                Success = false,
+                Message = "Refresh endpoint tidak aktif."
+            };
+        }
+
+        var refreshBaseUrl = NormalizeBaseUrl(storedRefreshSetting.BaseUrl) ?? authBaseUrl;
+        var refreshEndpointPath = NormalizeEndpointPath(
+            storedRefreshSetting.EndpointPath,
+            storedRefreshSetting.EndpointPath is { Length: > 0 }
+                ? storedRefreshSetting.EndpointPath
+                : GetDefaultEndpointPath(InternalSystemRefreshSettingKey));
+        var separator = refreshEndpointPath.Contains('?') ? "&" : "?";
+        var refreshUrl = $"{refreshBaseUrl}{refreshEndpointPath}{separator}refresh_token={Uri.EscapeDataString(refreshToken)}";
+
+        using var response = await _httpClientFactory.CreateClient().PostAsync(refreshUrl, null);
+        var content = await response.Content.ReadAsStringAsync();
+        var message = GetInternalLoginMessage(content) ?? response.ReasonPhrase ?? "Refresh request completed.";
+        var token = GetInternalLoginToken(content);
+
+        return new InternalSystemRefreshTestResult
+        {
+            Url = refreshUrl,
+            StatusCode = (int)response.StatusCode,
+            Success = response.IsSuccessStatusCode,
+            Message = message,
+            TokenPreview = MaskToken(token),
+            ResponsePreview = content.Length > 500 ? $"{content[..500]}..." : content
+        };
     }
 
     private async Task<IActionResult> SaveIntegrationSetting(
@@ -357,7 +401,7 @@ public class ProductionControlController : ApiControllerBase
             var endpointPath = NormalizeEndpointPath(request.EndpointPath, GetDefaultEndpointPath(settingKey));
             var filterFieldName = NormalizeText(request.FilterFieldName) ?? GetDefaultFilterFieldName(settingKey);
 
-            if (baseUrl is null)
+            if (baseUrl is null && settingKey != InternalSystemRefreshSettingKey)
             {
                 throw new ArgumentException("Base URL is required.");
             }
@@ -376,7 +420,7 @@ public class ProductionControlController : ApiControllerBase
                 _db.ProductionIntegrationSettings.Add(setting);
             }
 
-            setting.BaseUrl = baseUrl;
+            setting.BaseUrl = baseUrl ?? string.Empty;
             setting.EndpointPath = endpointPath;
             setting.Username = NormalizeText(request.Username);
             if (!string.IsNullOrWhiteSpace(request.Password))
@@ -1625,6 +1669,7 @@ public class ProductionControlController : ApiControllerBase
     {
         ShiageLotNoSettingKey => "/fab-shiage-prod-res/",
         InternalSystemAuthSettingKey => "/auth/login",
+        InternalSystemRefreshSettingKey => "/auth/refresh",
         _ => "/"
     };
 
@@ -1775,6 +1820,11 @@ public class ProductionControlController : ApiControllerBase
         {
             using var document = JsonDocument.Parse(content);
             var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.String)
+            {
+                return NormalizeText(root.GetString());
+            }
+
             var data = TryGetProperty(root, "data");
             return GetJsonString(root, "token") ??
                 GetJsonString(root, "access_token") ??
@@ -1782,6 +1832,29 @@ public class ProductionControlController : ApiControllerBase
                 (data.HasValue ? GetJsonString(data.Value, "token") : null) ??
                 (data.HasValue ? GetJsonString(data.Value, "access_token") : null) ??
                 (data.HasValue ? GetJsonString(data.Value, "accessToken") : null);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetInternalRefreshToken(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            var data = TryGetProperty(root, "data");
+            return GetJsonString(root, "refresh_token") ??
+                GetJsonString(root, "refreshToken") ??
+                (data.HasValue ? GetJsonString(data.Value, "refresh_token") : null) ??
+                (data.HasValue ? GetJsonString(data.Value, "refreshToken") : null);
         }
         catch
         {
