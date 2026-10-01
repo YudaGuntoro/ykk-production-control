@@ -40,6 +40,7 @@ export const navItems: NavItem[] = [
       { name: "Shift", path: "/shift-master" },
       { name: "Line", path: "/line-master" },
       { name: "Operator List", path: "/pic-cards" },
+      { name: "Users", path: "/users" },
     ],
   },
   {

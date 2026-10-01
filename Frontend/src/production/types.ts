@@ -162,3 +162,19 @@ export type ProductionActivityLog = {
   weight?: number | null;
   created_at: string;
 };
+
+export type LoginUserRole = "ADMIN" | "SUPERVISOR" | "OPERATOR" | "VIEWER";
+export type LoginUserStatus = "ACTIVE" | "INACTIVE";
+
+export type LoginUser = {
+  id: number;
+  username: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role: LoginUserRole;
+  status: LoginUserStatus;
+  last_login_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
