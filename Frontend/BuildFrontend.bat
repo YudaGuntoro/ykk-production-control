@@ -49,6 +49,25 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%FRONTEND_PORT% .*LIS
 )
 timeout /t 2 /nobreak >nul
 
+if exist "%STANDALONE_DIR%" (
+    echo.
+    echo Removing previous standalone build folder...
+    rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
+    if exist "%STANDALONE_DIR%" (
+        echo Standalone folder is still locked. Stopping node.exe processes...
+        taskkill /IM node.exe /F >nul 2>nul
+        timeout /t 2 /nobreak >nul
+        rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
+    )
+    if exist "%STANDALONE_DIR%" (
+        echo.
+        echo Could not remove locked standalone folder:
+        echo %STANDALONE_DIR%
+        echo Close any CMD/Explorer window opened inside this folder, then run this batch again.
+        goto failed
+    )
+)
+
 echo.
 echo Installing frontend dependencies...
 call npm install
