@@ -29,7 +29,9 @@ public class AuthService : IAuthService
         }
 
         var username = request.Username.Trim();
-        var user = await _db.Users.FirstOrDefaultAsync(x => x.Username == username);
+        var user = await _db.Users
+            .Include(x => x.RoleMaster)
+            .FirstOrDefaultAsync(x => x.Username == username);
         if (user == null || !AuthPasswordHasher.VerifyPassword(request.Password, user.PasswordSalt, user.PasswordHash))
         {
             throw new UnauthorizedAccessException("Invalid username or password.");
@@ -66,10 +68,10 @@ public class AuthService : IAuthService
             new(JwtRegisteredClaimNames.Iat, new DateTimeOffset(issuedAt).ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64),
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, user.Role.ToString()),
+            new(ClaimTypes.Role, ResolveRoleCode(user)),
             new("username", user.Username),
             new("full_name", user.FullName),
-            new("role", user.Role.ToString())
+            new("role", ResolveRoleCode(user))
         };
 
         if (!string.IsNullOrWhiteSpace(user.Email))
@@ -98,11 +100,18 @@ public class AuthService : IAuthService
             FullName = user.FullName,
             Email = user.Email,
             Phone = user.Phone,
-            Role = user.Role,
+            RoleId = user.RoleId,
+            Role = ResolveRoleCode(user),
+            RoleName = user.RoleMaster?.RoleName ?? ResolveRoleCode(user),
             Status = user.Status,
             LastLoginAt = user.LastLoginAt,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt
         };
     }
+
+    private static string ResolveRoleCode(AppUser user) =>
+        string.IsNullOrWhiteSpace(user.RoleMaster?.RoleCode)
+            ? user.Role
+            : user.RoleMaster.RoleCode;
 }

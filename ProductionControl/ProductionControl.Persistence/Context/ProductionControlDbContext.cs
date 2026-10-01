@@ -11,6 +11,7 @@ public class ProductionControlDbContext : DbContext
     }
 
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<AppRole> UserRoles => Set<AppRole>();
     public DbSet<StatusMaster> StatusMasters => Set<StatusMaster>();
     public DbSet<PicCard> PicCards => Set<PicCard>();
     public DbSet<ShiftMaster> ShiftMasters => Set<ShiftMaster>();
@@ -37,15 +38,32 @@ public class ProductionControlDbContext : DbContext
             entity.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(150).IsRequired();
             entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(150);
             entity.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(50);
-            entity.Property(x => x.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(30);
+            entity.Property(x => x.RoleId).HasColumnName("role_id");
+            entity.Property(x => x.Role).HasColumnName("role").HasMaxLength(50);
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(30);
             entity.Property(x => x.PasswordHash).HasColumnName("password_hash").HasMaxLength(255).IsRequired();
             entity.Property(x => x.PasswordSalt).HasColumnName("password_salt").HasMaxLength(255).IsRequired();
             entity.Property(x => x.LastLoginAt).HasColumnName("last_login_at");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasOne(x => x.RoleMaster).WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => x.Username).IsUnique();
             entity.HasIndex(x => x.Email).IsUnique();
+            entity.HasIndex(x => x.RoleId);
+        });
+
+        modelBuilder.Entity<AppRole>(entity =>
+        {
+            entity.ToTable("user_roles");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RoleCode).HasColumnName("role_code").HasMaxLength(50).IsRequired();
+            entity.Property(x => x.RoleName).HasColumnName("role_name").HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(255);
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasIndex(x => x.RoleCode).IsUnique();
+            entity.HasIndex(x => new { x.IsActive, x.RoleName });
         });
 
         modelBuilder.Entity<StatusMaster>(entity =>

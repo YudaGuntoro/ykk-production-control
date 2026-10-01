@@ -196,6 +196,7 @@ public static class ServiceRegistration
             }
 
             EnsureProductionWorkOrderSchema(connection);
+            EnsureUserRoleSchema(connection);
             EnsureReleaseProductionOrderDetailSchema(connection);
             EnsureProductionOperatorSchema(connection);
             EnsureProductionActivityLogSchema(connection);
@@ -266,6 +267,68 @@ public static class ServiceRegistration
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_plan_line", "(`plan_date`, `line_code`)");
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_shift_master", "(`shift_master_id`)");
         AddIndexIfMissing(connection, "production_work_orders", "ix_production_work_orders_line_master", "(`line_master_id`)");
+    }
+
+    private static void EnsureUserRoleSchema(System.Data.Common.DbConnection connection)
+    {
+        if (!TableExists(connection, "user_roles"))
+        {
+            ExecuteNonQuery(connection, """
+                CREATE TABLE `user_roles` (
+                    `id` INT AUTO_INCREMENT PRIMARY KEY,
+                    `role_code` VARCHAR(50) NOT NULL,
+                    `role_name` VARCHAR(100) NOT NULL,
+                    `description` VARCHAR(255) NULL,
+                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY `uq_user_roles_code` (`role_code`),
+                    KEY `ix_user_roles_active_name` (`is_active`, `role_name`)
+                );
+                """);
+        }
+
+        ExecuteNonQuery(connection, """
+            INSERT INTO `user_roles` (`role_code`, `role_name`, `description`, `is_active`)
+            VALUES
+                ('ADMIN', 'Admin', 'Full access user.', 1),
+                ('SUPERVISOR', 'Supervisor', 'Production supervisor user.', 1),
+                ('OPERATOR', 'Operator', 'Production operator user.', 1),
+                ('VIEWER', 'Viewer', 'Read only user.', 1)
+            ON DUPLICATE KEY UPDATE
+                `role_name` = VALUES(`role_name`),
+                `description` = IF(`description` IS NULL OR `description` = '', VALUES(`description`), `description`),
+                `updated_at` = CURRENT_TIMESTAMP;
+            """);
+
+        if (!TableExists(connection, "users"))
+        {
+            return;
+        }
+
+        AddColumnIfMissing(connection, "users", "role_id", "INT NULL");
+        if (!ColumnExists(connection, "users", "role"))
+        {
+            AddColumnIfMissing(connection, "users", "role", "VARCHAR(50) NOT NULL DEFAULT 'VIEWER'");
+        }
+
+        ExecuteNonQuery(connection, """
+            UPDATE `users` u
+            JOIN `user_roles` r ON r.`role_code` = UPPER(COALESCE(NULLIF(u.`role`, ''), 'VIEWER'))
+            SET u.`role_id` = r.`id`,
+                u.`role` = r.`role_code`
+            WHERE u.`role_id` IS NULL;
+            """);
+
+        ExecuteNonQuery(connection, """
+            UPDATE `users` u
+            JOIN `user_roles` r ON r.`role_code` = 'VIEWER'
+            SET u.`role_id` = r.`id`,
+                u.`role` = r.`role_code`
+            WHERE u.`role_id` IS NULL;
+            """);
+
+        AddIndexIfMissing(connection, "users", "ix_users_role_id", "(`role_id`)");
     }
 
     private static void EnsureLineMasterColumns(System.Data.Common.DbConnection connection)

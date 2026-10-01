@@ -163,8 +163,17 @@ export type ProductionActivityLog = {
   created_at: string;
 };
 
-export type LoginUserRole = "ADMIN" | "SUPERVISOR" | "OPERATOR" | "VIEWER";
 export type LoginUserStatus = "ACTIVE" | "INACTIVE";
+
+export type LoginRole = {
+  id: number;
+  role_code: string;
+  role_name: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
 
 export type LoginUser = {
   id: number;
@@ -172,7 +181,9 @@ export type LoginUser = {
   full_name: string;
   email?: string | null;
   phone?: string | null;
-  role: LoginUserRole;
+  role_id?: number | null;
+  role: string;
+  role_name: string;
   status: LoginUserStatus;
   last_login_at?: string | null;
   created_at: string;

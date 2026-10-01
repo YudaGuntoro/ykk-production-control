@@ -16,6 +16,30 @@ public enum AppUserStatus
     INACTIVE
 }
 
+public class AppRole
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("role_code")]
+    public string RoleCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("role_name")]
+    public string RoleName { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
 public class AppUser
 {
     [JsonPropertyName("id")]
@@ -33,8 +57,11 @@ public class AppUser
     [JsonPropertyName("phone")]
     public string? Phone { get; set; }
 
+    [JsonPropertyName("role_id")]
+    public int? RoleId { get; set; }
+
     [JsonPropertyName("role")]
-    public AppUserRole Role { get; set; } = AppUserRole.VIEWER;
+    public string Role { get; set; } = AppUserRole.VIEWER.ToString();
 
     [JsonPropertyName("status")]
     public AppUserStatus Status { get; set; } = AppUserStatus.ACTIVE;
@@ -53,6 +80,9 @@ public class AppUser
 
     [JsonPropertyName("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+
+    [JsonIgnore]
+    public AppRole? RoleMaster { get; set; }
 }
 
 public class UserResponse
@@ -72,8 +102,14 @@ public class UserResponse
     [JsonPropertyName("phone")]
     public string? Phone { get; set; }
 
+    [JsonPropertyName("role_id")]
+    public int? RoleId { get; set; }
+
     [JsonPropertyName("role")]
-    public AppUserRole Role { get; set; }
+    public string Role { get; set; } = string.Empty;
+
+    [JsonPropertyName("role_name")]
+    public string RoleName { get; set; } = string.Empty;
 
     [JsonPropertyName("status")]
     public AppUserStatus Status { get; set; }
@@ -126,12 +162,31 @@ public class UpdateUserRequest
     [JsonPropertyName("phone")]
     public string? Phone { get; set; }
 
-    [JsonPropertyName("role")]
-    public AppUserRole Role { get; set; } = AppUserRole.VIEWER;
+    [JsonPropertyName("role_id")]
+    public int RoleId { get; set; }
 
     [JsonPropertyName("status")]
     public AppUserStatus Status { get; set; } = AppUserStatus.ACTIVE;
 
     [JsonPropertyName("password")]
     public string? Password { get; set; }
+}
+
+public class CreateUserRequest : UpdateUserRequest
+{
+}
+
+public class SaveRoleRequest
+{
+    [JsonPropertyName("role_code")]
+    public string RoleCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("role_name")]
+    public string RoleName { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("is_active")]
+    public bool IsActive { get; set; } = true;
 }
