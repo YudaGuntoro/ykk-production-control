@@ -178,6 +178,13 @@ export default function ProductionControlPage() {
     }
   }
 
+  function submitLotScanOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
+
   async function scanOperator(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cardUid = operatorCardUid.trim();
@@ -462,12 +469,14 @@ export default function ProductionControlPage() {
               <input
                 autoFocus
                 className={inputClass}
+                enterKeyHint="done"
+                onKeyDown={submitLotScanOnEnter}
                 onChange={(event) => setOrderNumberCode(event.target.value)}
                 placeholder="Scan / type Lot No"
                 value={orderNumberCode}
               />
               <button className={scanButtonClass} disabled={busy} type="submit">
-                Lot No
+                Scan Lot
               </button>
             </div>
           </form>
