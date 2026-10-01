@@ -7,6 +7,7 @@ set "FRONTEND_PORT=3000"
 set "PM2_AVAILABLE=0"
 set "PM2_CMD="
 set "STANDALONE_DIR=%FRONTEND_DIR%.next\standalone"
+if not defined PM2_HOME set "PM2_HOME=%USERPROFILE%\.pm2"
 
 echo Building frontend...
 cd /d "%FRONTEND_DIR%"
@@ -34,9 +35,19 @@ if defined PM2_CMD (
 
 if "%PM2_AVAILABLE%"=="1" (
     echo.
-    echo Stopping PM2 app %PM2_APP_NAME% if it is running...
-    call "%PM2_CMD%" stop "%PM2_APP_NAME%" >nul 2>nul
+    echo Stopping PM2 app %PM2_APP_NAME% before build...
+    call "%PM2_CMD%" delete "%PM2_APP_NAME%" >nul 2>nul
 )
+
+echo.
+echo Releasing port %FRONTEND_PORT% if it is still locked...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":%FRONTEND_PORT% .*LISTENING"') do (
+    if not "%%p"=="0" (
+        echo Stopping process %%p on port %FRONTEND_PORT%...
+        taskkill /PID %%p /F >nul 2>nul
+    )
+)
+timeout /t 2 /nobreak >nul
 
 echo.
 echo Installing frontend dependencies...
@@ -96,7 +107,10 @@ echo.
 echo Frontend build failed.
 if "%PM2_AVAILABLE%"=="1" (
     echo Trying to restart existing PM2 app %PM2_APP_NAME%...
-    call "%PM2_CMD%" restart "%PM2_APP_NAME%" >nul 2>nul
+    if exist "%STANDALONE_DIR%\server.js" (
+        set "PORT=%FRONTEND_PORT%"
+        call "%PM2_CMD%" start "%ProgramFiles%\nodejs\node.exe" --name "%PM2_APP_NAME%" --cwd "%STANDALONE_DIR%" -- server.js >nul 2>nul
+    )
 )
 pause
 exit /b 1
