@@ -209,8 +209,8 @@ public class ProductionControlController : ApiControllerBase
                 return ApiNotFound("Work order was not found.");
             }
 
-            var cardUid = request.CardUid.Trim();
-            var pic = await _db.PicCards.FirstOrDefaultAsync(x => x.CardUid == cardUid && x.IsActive);
+            var operatorCode = NormalizeText(request.CardUid);
+            var pic = await FindActivePicCard(operatorCode);
             if (pic is null)
             {
                 return ApiNotFound("PIC is not registered or the card is inactive.");
@@ -969,13 +969,13 @@ public class ProductionControlController : ApiControllerBase
     {
         try
         {
-            var cardUid = request.CardUid.Trim();
-            if (string.IsNullOrWhiteSpace(cardUid))
+            var operatorCode = NormalizeText(request.CardUid);
+            if (operatorCode is null)
             {
                 throw new ArgumentException("Operator card UID is required.");
             }
 
-            var pic = await _db.PicCards.FirstOrDefaultAsync(x => x.CardUid == cardUid && x.IsActive);
+            var pic = await FindActivePicCard(operatorCode);
             if (pic is null)
             {
                 return ApiNotFound("PIC is not registered or the card is inactive.");
@@ -2118,6 +2118,19 @@ public class ProductionControlController : ApiControllerBase
                 CreatedAt = now
             })
             .ToList();
+    }
+
+    private Task<PicCard?> FindActivePicCard(string? operatorCode)
+    {
+        var normalized = NormalizeText(operatorCode);
+        if (normalized is null)
+        {
+            return Task.FromResult<PicCard?>(null);
+        }
+
+        return _db.PicCards.FirstOrDefaultAsync(x =>
+            x.IsActive &&
+            (x.CardUid == normalized || x.EmployeeNo == normalized));
     }
 
     private static string? NormalizeText(string? value) =>
