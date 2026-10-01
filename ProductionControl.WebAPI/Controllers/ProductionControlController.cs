@@ -345,7 +345,7 @@ public class ProductionControlController : ApiControllerBase
                 RefreshTokenPreview = MaskToken(refreshToken),
                 Refresh = refresh,
                 ResponsePreview = content.Length > 500 ? $"{content[..500]}..." : content
-            }, response.IsSuccessStatusCode ? "Login internal system berhasil." : "Login internal system gagal.");
+            }, response.IsSuccessStatusCode ? "Login external endpoint berhasil." : "Login external endpoint gagal.");
         }
         catch (Exception ex)
         {

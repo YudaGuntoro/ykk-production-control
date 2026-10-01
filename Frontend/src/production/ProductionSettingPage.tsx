@@ -64,15 +64,15 @@ const settingDefinitions: SettingDefinition[] = [
   },
   {
     key: "internal_system_auth",
-    title: "Endpoint Login Internal System",
-    description: "Dipakai untuk konfigurasi endpoint auth internal system.",
+    title: "Endpoint Login External",
+    description: "Dipakai untuk konfigurasi login ke endpoint external.",
     endpointPlaceholder: "/auth/login",
     showCredentials: true,
   },
   {
     key: "internal_system_refresh",
-    title: "Endpoint Refresh Internal System",
-    description: "Dipakai untuk refresh token dari internal system setelah login berhasil.",
+    title: "Endpoint Refresh External",
+    description: "Dipakai untuk refresh token dari endpoint external setelah login berhasil.",
     endpointPlaceholder: "/auth/refresh",
   },
 ];
@@ -298,12 +298,12 @@ export default function ProductionSettingPage() {
       );
       setLoginTestResult(result);
       if (result.success) {
-        toast.success({ message: result.message || "Login internal system berhasil." });
+        toast.success({ message: result.message || "Login external endpoint berhasil." });
       } else {
-        toast.error({ message: result.message || "Login internal system gagal." });
+        toast.error({ message: result.message || "Login external endpoint gagal." });
       }
     } catch (err) {
-      toast.error({ message: err instanceof Error ? err.message : "Gagal test login internal system." });
+      toast.error({ message: err instanceof Error ? err.message : "Gagal test login external endpoint." });
     } finally {
       setLoadingKey("");
     }
