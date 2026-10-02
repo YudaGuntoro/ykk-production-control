@@ -2244,6 +2244,12 @@ public class ProductionControlController : ApiControllerBase
         project.ProjectName = normalizedProjectName;
         project.IsActive = true;
         project.UpdatedAt = now;
+
+        if (project.Id == 0)
+        {
+            await _db.SaveChangesAsync();
+        }
+
         return project.Id;
     }
 
