@@ -45,7 +45,7 @@ export const navItems: NavItem[] = [
   },
   {
     icon: <ListIcon />,
-    name: "Log",
+    name: "Activity Log",
     path: "/log",
   },
   {

@@ -41,7 +41,7 @@ export default function InternalSystemLogPage() {
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="font-bold text-slate-900 dark:text-white">Log Aktivitas Produksi</h1>
+            <h1 className="font-bold text-slate-900 dark:text-white">Activity Log</h1>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Menampilkan aktivitas scan, start, finish, dan perubahan status produksi terbaru.</p>
           </div>
           <button
