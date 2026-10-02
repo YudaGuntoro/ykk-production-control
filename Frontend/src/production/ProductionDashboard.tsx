@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
-import type { ProductionDashboardShiftOutput, ProductionDashboardSummary } from "./types";
+import type { ProductionDashboardShiftOutput, ProductionDashboardSummary, ProductionWorkOrder } from "./types";
 import { ProductionDatePicker, StatusBadge, todayParam } from "./ui";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
@@ -143,6 +143,30 @@ function formatWeight(value?: number | null) {
   return typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "-";
 }
 
+function mapWorkOrdersToDashboardRows(items: ProductionWorkOrder[]) {
+  return items.map((item) => ({
+    id: item.id,
+    project_no: item.project_no,
+    order_no: item.order_number,
+    lot_no: item.lot_no,
+    weight: item.weight,
+    status: item.status,
+  }));
+}
+
+function withWorkOrderFallback(data: ProductionDashboardSummary, items: ProductionWorkOrder[]): ProductionDashboardSummary {
+  const rows = mapWorkOrdersToDashboardRows(items);
+
+  return {
+    ...data,
+    total_work_orders: rows.length,
+    waiting_work_orders: rows.filter((item) => item.status === "WAITING").length,
+    running_work_orders: rows.filter((item) => item.status === "IN_PROGRESS").length,
+    completed_work_orders: rows.filter((item) => item.status === "FINISH").length,
+    work_orders: rows,
+  };
+}
+
 export default function ProductionDashboard() {
   const [date, setDate] = useState(todayParam());
   const [data, setData] = useState<ProductionDashboardSummary | null>(null);
@@ -153,7 +177,14 @@ export default function ProductionDashboard() {
     setLoading(true);
     setError(null);
     try {
-      setData(await apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`));
+      const dashboard = await apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`);
+      if (dashboard.work_orders.length > 0 || dashboard.total_work_orders > 0) {
+        setData(dashboard);
+        return;
+      }
+
+      const workOrders = await apiGet<ProductionWorkOrder[]>("/api/production/work-orders");
+      setData(workOrders.length > 0 ? withWorkOrderFallback(dashboard, workOrders) : dashboard);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load the production dashboard.");
     } finally {
