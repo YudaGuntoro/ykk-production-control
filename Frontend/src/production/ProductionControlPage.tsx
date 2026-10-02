@@ -570,7 +570,7 @@ export default function ProductionControlPage() {
             <h2 className="font-bold text-slate-900 dark:text-white">Work Orders</h2>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Sorted by latest updated time, newest first.</p>
           </div>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px] lg:flex lg:items-end lg:gap-5">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">
               Lot No / Order Number
               <div className="mt-2 flex gap-2">
@@ -592,10 +592,10 @@ export default function ProductionControlPage() {
                 ) : null}
               </div>
             </label>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300 lg:min-w-[150px]">
               Status
               <select
-                className="mt-2 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:w-auto"
+                className="mt-2 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 onChange={(event) => setStatusFilter(event.target.value as ProductionWorkOrderStatus | "ALL")}
                 value={statusFilter}
               >
