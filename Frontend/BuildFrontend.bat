@@ -7,6 +7,7 @@ set "FRONTEND_PORT=3000"
 set "PM2_AVAILABLE=0"
 set "PM2_CMD="
 set "STANDALONE_DIR=%FRONTEND_DIR%.next\standalone"
+set "LOCKED_STANDALONE_DIR=%FRONTEND_DIR%.next\standalone.locked-%RANDOM%"
 if not defined PM2_HOME set "PM2_HOME=%USERPROFILE%\.pm2"
 
 echo Building frontend...
@@ -37,6 +38,7 @@ if "%PM2_AVAILABLE%"=="1" (
     echo.
     echo Stopping PM2 app %PM2_APP_NAME% before build...
     call "%PM2_CMD%" delete "%PM2_APP_NAME%" >nul 2>nul
+    call "%PM2_CMD%" kill >nul 2>nul
 )
 
 echo.
@@ -52,19 +54,20 @@ timeout /t 2 /nobreak >nul
 if exist "%STANDALONE_DIR%" (
     echo.
     echo Removing previous standalone build folder...
-    rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
-    if exist "%STANDALONE_DIR%" (
-        echo Standalone folder is still locked. Stopping node.exe processes...
-        taskkill /IM node.exe /F >nul 2>nul
-        timeout /t 2 /nobreak >nul
-        rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
-    )
+    call :remove_standalone
     if exist "%STANDALONE_DIR%" (
         echo.
-        echo Could not remove locked standalone folder:
-        echo %STANDALONE_DIR%
-        echo Close any CMD/Explorer window opened inside this folder, then run this batch again.
-        goto failed
+        echo Standalone folder is still locked. Trying to rename old folder...
+        move "%STANDALONE_DIR%" "%LOCKED_STANDALONE_DIR%" >nul 2>nul
+        if exist "%STANDALONE_DIR%" (
+            echo.
+            echo Could not remove locked standalone folder:
+            echo %STANDALONE_DIR%
+            echo Close any CMD/Explorer window opened inside this folder, then run this batch again.
+            goto failed
+        )
+        echo Old standalone folder was moved to:
+        echo %LOCKED_STANDALONE_DIR%
     )
 )
 
@@ -119,6 +122,23 @@ echo.
 echo Frontend build completed.
 echo URL: http://localhost:%FRONTEND_PORT%
 pause
+exit /b 0
+
+:remove_standalone
+rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
+if not exist "%STANDALONE_DIR%" exit /b 0
+
+echo Standalone folder is still locked. Stopping frontend node processes...
+taskkill /IM node.exe /F >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = '%FRONTEND_DIR:\=\\%'; Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" | Where-Object { $_.CommandLine -like ('*' + $root + '*') -or $_.CommandLine -like '*.next\\standalone\\server.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>nul
+timeout /t 2 /nobreak >nul
+
+for /l %%r in (1,1,5) do (
+    if exist "%STANDALONE_DIR%" (
+        rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
+        if exist "%STANDALONE_DIR%" timeout /t 2 /nobreak >nul
+    )
+)
 exit /b 0
 
 :failed
