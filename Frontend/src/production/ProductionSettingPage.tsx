@@ -134,9 +134,15 @@ function buildUrl(setting: IntegrationSetting, fallbackEndpoint: string, lotNo =
   const endpointPath = normalizeEndpointPath(setting.endpoint_path, fallbackEndpoint);
   const url = new URL(`${baseUrl}${endpointPath}`);
   const normalizedLotNo = extractLotNoFromScan(lotNo);
+  const lineNo = extractLineNoFromScan(lotNo);
 
   if (normalizedLotNo) {
-    url.searchParams.set("$filter", `${setting.filter_field_name || "LOT_NO"} eq '${normalizedLotNo.replace(/'/g, "''")}'`);
+    let filter = `${setting.filter_field_name || "LOT_NO"} eq '${normalizedLotNo.replace(/'/g, "''")}'`;
+    if (lineNo) {
+      filter += ` and LINE eq '${lineNo.replace(/'/g, "''")}'`;
+    }
+
+    url.searchParams.set("$filter", filter);
   }
 
   return url.toString();
@@ -148,6 +154,15 @@ function extractLotNoFromScan(value: string) {
   const parts = normalized.split(/\s+/);
   if (parts.length < 2) return normalized;
   return parts[1].slice(0, 10);
+}
+
+function extractLineNoFromScan(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  const [prefix] = normalized.split(/\s+/, 1);
+  if (!prefix || prefix === normalized) return "";
+  const match = prefix.toUpperCase().match(/L[A-Z0-9]/);
+  return match?.[0] ?? "";
 }
 
 export default function ProductionSettingPage() {

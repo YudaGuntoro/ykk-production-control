@@ -152,6 +152,7 @@ public class ProductionControlController : ApiControllerBase
         {
             var rawScanCode = NormalizeText(request.LotNo) ?? NormalizeText(request.OrderNumber);
             var code = ExtractLotNoFromScan(rawScanCode);
+            var lineNo = ExtractShiageLineNoFromScan(rawScanCode);
             if (string.IsNullOrWhiteSpace(code))
             {
                 throw new ArgumentException("Lot No is required.");
@@ -169,7 +170,7 @@ public class ProductionControlController : ApiControllerBase
                 return ApiOk(ToResponse(existingOrder), "Lot No found.");
             }
 
-            var shiageResult = await FetchShiageLotNo(code);
+            var shiageResult = await FetchShiageLotNo(code, lineNo);
             if (shiageResult is null)
             {
                 return ApiNotFound("Lot No / order number was not found.");
@@ -388,6 +389,7 @@ public class ProductionControlController : ApiControllerBase
         try
         {
             var lotNo = ExtractLotNoFromScan(request.LotNo);
+            var lineNo = ExtractShiageLineNoFromScan(request.LotNo);
             var setting = new ProductionIntegrationSetting
             {
                 SettingKey = ShiageLotNoSettingKey,
@@ -404,7 +406,7 @@ public class ProductionControlController : ApiControllerBase
                 throw new ArgumentException("Base URL is required.");
             }
 
-            var url = BuildShiageUrl(setting, lotNo);
+            var url = BuildShiageUrl(setting, lotNo, lineNo);
             using var response = await SendShiageRequest(url);
             var content = await response.Content.ReadAsStringAsync();
 
@@ -1782,7 +1784,7 @@ public class ProductionControlController : ApiControllerBase
         };
     }
 
-    private async Task<ShiageLotNoResult?> FetchShiageLotNo(string lotNo)
+    private async Task<ShiageLotNoResult?> FetchShiageLotNo(string lotNo, string? lineNo = null)
     {
         var setting = await GetShiageLotNoSettingEntity();
         if (!setting.IsActive || string.IsNullOrWhiteSpace(setting.BaseUrl))
@@ -1790,7 +1792,7 @@ public class ProductionControlController : ApiControllerBase
             return null;
         }
 
-        var url = BuildShiageUrl(setting, lotNo);
+        var url = BuildShiageUrl(setting, lotNo, lineNo);
         using var response = await SendShiageRequest(url);
         var content = await response.Content.ReadAsStringAsync();
 
@@ -1804,7 +1806,7 @@ public class ProductionControlController : ApiControllerBase
         return data.HasValue ? ToShiageLotNoResult(data.Value) : null;
     }
 
-    private static string BuildShiageUrl(ProductionIntegrationSetting setting, string? lotNo)
+    private static string BuildShiageUrl(ProductionIntegrationSetting setting, string? lotNo, string? lineNo = null)
     {
         var baseUrl = NormalizeBaseUrl(setting.BaseUrl) ?? string.Empty;
         var endpointPath = NormalizeEndpointPath(setting.EndpointPath);
@@ -1814,7 +1816,14 @@ public class ProductionControlController : ApiControllerBase
         if (!string.IsNullOrWhiteSpace(lotNo))
         {
             var filterValue = lotNo.Replace("'", "''");
-            query["$filter"] = $"{filterFieldName} eq '{filterValue}'";
+            var filter = $"{filterFieldName} eq '{filterValue}'";
+            var normalizedLineNo = NormalizeText(lineNo);
+            if (!string.IsNullOrWhiteSpace(normalizedLineNo))
+            {
+                filter += $" and LINE eq '{normalizedLineNo.Replace("'", "''")}'";
+            }
+
+            query["$filter"] = filter;
         }
 
         var queryString = string.Join("&", query.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
@@ -2484,6 +2493,32 @@ public class ProductionControlController : ApiControllerBase
         }
 
         return afterPrefix.Length > 10 ? afterPrefix[..10] : afterPrefix;
+    }
+
+    private static string? ExtractShiageLineNoFromScan(string? value)
+    {
+        var normalized = NormalizeText(value);
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        var firstWhitespaceIndex = normalized.IndexOfAny([' ', '\t', '\r', '\n']);
+        if (firstWhitespaceIndex <= 0)
+        {
+            return null;
+        }
+
+        var prefix = normalized[..firstWhitespaceIndex].Trim().ToUpperInvariant();
+        for (var index = 0; index < prefix.Length - 1; index++)
+        {
+            if (prefix[index] == 'L' && char.IsLetterOrDigit(prefix[index + 1]))
+            {
+                return prefix.Substring(index, 2);
+            }
+        }
+
+        return null;
     }
 
     private static TimeSpan? ParseSchedule(string? value)
