@@ -136,8 +136,6 @@ function buildUrl(setting: IntegrationSetting, fallbackEndpoint: string, lotNo =
   const normalizedLotNo = extractLotNoFromScan(lotNo);
 
   if (normalizedLotNo) {
-    url.searchParams.set("$top", String(Math.max(1, Math.min(Number(setting.top) || 1, 1000))));
-    url.searchParams.set("$skip", String(Math.max(0, Number(setting.skip) || 0)));
     url.searchParams.set("$filter", `${setting.filter_field_name || "LOT_NO"} eq '${normalizedLotNo.replace(/'/g, "''")}'`);
   }
 
@@ -445,28 +443,6 @@ export default function ProductionSettingPage() {
                     />
                   </label>
 
-                  <label className="block">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Top</span>
-                    <input
-                      className={inputClass}
-                      min={1}
-                      max={1000}
-                      onChange={(event) => updateSetting(definition.key, "top", Number(event.target.value))}
-                      type="number"
-                      value={setting.top}
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Skip</span>
-                    <input
-                      className={inputClass}
-                      min={0}
-                      onChange={(event) => updateSetting(definition.key, "skip", Number(event.target.value))}
-                      type="number"
-                      value={setting.skip}
-                    />
-                  </label>
                 </>
               ) : null}
 

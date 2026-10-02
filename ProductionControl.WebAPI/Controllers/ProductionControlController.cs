@@ -1795,11 +1795,7 @@ public class ProductionControlController : ApiControllerBase
         var baseUrl = NormalizeBaseUrl(setting.BaseUrl) ?? string.Empty;
         var endpointPath = NormalizeEndpointPath(setting.EndpointPath);
         var filterFieldName = NormalizeText(setting.FilterFieldName) ?? "LOT_NO";
-        var query = new Dictionary<string, string>
-        {
-            ["$top"] = Math.Clamp(setting.Top, 1, 1000).ToString(),
-            ["$skip"] = Math.Max(0, setting.Skip).ToString()
-        };
+        var query = new Dictionary<string, string>();
 
         if (!string.IsNullOrWhiteSpace(lotNo))
         {
@@ -1809,7 +1805,9 @@ public class ProductionControlController : ApiControllerBase
 
         var queryString = string.Join("&", query.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
 
-        return $"{baseUrl}{endpointPath}?{queryString}";
+        return string.IsNullOrWhiteSpace(queryString)
+            ? $"{baseUrl}{endpointPath}"
+            : $"{baseUrl}{endpointPath}?{queryString}";
     }
 
     private static string BuildShiageErrorMessage(string url, HttpResponseMessage response, string content)
