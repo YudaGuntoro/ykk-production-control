@@ -134,6 +134,7 @@ if not exist "%STANDALONE_DIR%" exit /b 0
 echo Standalone folder is still locked. Stopping frontend node processes...
 taskkill /IM node.exe /F >nul 2>nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = '%FRONTEND_DIR:\=\\%'; Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" | Where-Object { $_.CommandLine -like ('*' + $root + '*') -or $_.CommandLine -like '*.next\\standalone\\server.js*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>nul
+call :kill_locking_processes
 timeout /t 2 /nobreak >nul
 
 for /l %%r in (1,1,5) do (
@@ -146,6 +147,7 @@ exit /b 0
 
 :force_unlock_standalone
 echo Standalone folder is still locked. Restarting Explorer and retrying cleanup...
+call :kill_locking_processes
 taskkill /F /IM explorer.exe >nul 2>nul
 timeout /t 2 /nobreak >nul
 attrib -R -S -H "%STANDALONE_DIR%\*" /S /D >nul 2>nul
@@ -158,6 +160,10 @@ if exist "%STANDALONE_DIR%" (
 )
 start explorer.exe
 timeout /t 1 /nobreak >nul
+exit /b 0
+
+:kill_locking_processes
+powershell -NoProfile -ExecutionPolicy Bypass -File "%FRONTEND_DIR%KillLockedStandalone.ps1" -Path "%STANDALONE_DIR%" >nul 2>nul
 exit /b 0
 
 :failed
