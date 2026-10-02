@@ -154,22 +154,10 @@ function mapWorkOrdersToDashboardRows(items: ProductionWorkOrder[]) {
   }));
 }
 
-function withWorkOrderFallback(data: ProductionDashboardSummary, items: ProductionWorkOrder[]): ProductionDashboardSummary {
-  const rows = mapWorkOrdersToDashboardRows(items);
-
-  return {
-    ...data,
-    total_work_orders: rows.length,
-    waiting_work_orders: rows.filter((item) => item.status === "WAITING").length,
-    running_work_orders: rows.filter((item) => item.status === "IN_PROGRESS").length,
-    completed_work_orders: rows.filter((item) => item.status === "FINISH").length,
-    work_orders: rows,
-  };
-}
-
 export default function ProductionDashboard() {
   const [date, setDate] = useState(todayParam());
   const [data, setData] = useState<ProductionDashboardSummary | null>(null);
+  const [latestRows, setLatestRows] = useState<ProductionDashboardSummary["work_orders"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,14 +165,12 @@ export default function ProductionDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const dashboard = await apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`);
-      if (dashboard.work_orders.length > 0 || dashboard.total_work_orders > 0) {
-        setData(dashboard);
-        return;
-      }
-
-      const workOrders = await apiGet<ProductionWorkOrder[]>("/api/production/work-orders");
-      setData(workOrders.length > 0 ? withWorkOrderFallback(dashboard, workOrders) : dashboard);
+      const [dashboard, workOrders] = await Promise.all([
+        apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`),
+        apiGet<ProductionWorkOrder[]>("/api/production/work-orders"),
+      ]);
+      setData(dashboard);
+      setLatestRows(mapWorkOrdersToDashboardRows(workOrders));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load the production dashboard.");
     } finally {
@@ -194,6 +180,8 @@ export default function ProductionDashboard() {
 
   useEffect(() => {
     void load();
+    const intervalId = window.setInterval(() => void load(), 60_000);
+    return () => window.clearInterval(intervalId);
   }, [load]);
 
   return (
@@ -228,7 +216,7 @@ export default function ProductionDashboard() {
             <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
               <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Project No</th><th className="bg-[#0799c9] px-4 py-3">Order No</th><th className="bg-[#0799c9] px-4 py-3">Lot No</th><th className="bg-[#0799c9] px-4 py-3 text-right">Weight</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {(data?.work_orders ?? []).map((order) => {
+                {latestRows.map((order) => {
                   return (
                     <tr className="text-sm" key={order.id}>
                       <td className="px-5 py-4 font-bold text-slate-800 dark:text-white">{order.project_no || "-"}</td>
@@ -241,7 +229,7 @@ export default function ProductionDashboard() {
                 })}
               </tbody>
             </table>
-            {!loading && !(data?.work_orders.length) ? <p className="px-5 py-12 text-center text-sm text-slate-400">No work orders for this date.</p> : null}
+            {!loading && !latestRows.length ? <p className="px-5 py-12 text-center text-sm text-slate-400">No latest work orders found.</p> : null}
           </div>
         </section>
       </div>
