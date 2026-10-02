@@ -396,7 +396,7 @@ public class ProductionControlController : ApiControllerBase
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new InvalidOperationException($"Shiage endpoint failed with status {(int)response.StatusCode}: {content}");
+                throw new InvalidOperationException(BuildShiageErrorMessage(url, response, content));
             }
 
             using var document = JsonDocument.Parse(content);
@@ -1782,7 +1782,7 @@ public class ProductionControlController : ApiControllerBase
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Shiage endpoint failed with status {(int)response.StatusCode}: {content}");
+            throw new InvalidOperationException(BuildShiageErrorMessage(url, response, content));
         }
 
         using var document = JsonDocument.Parse(content);
@@ -1810,6 +1810,19 @@ public class ProductionControlController : ApiControllerBase
         var queryString = string.Join("&", query.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"));
 
         return $"{baseUrl}{endpointPath}?{queryString}";
+    }
+
+    private static string BuildShiageErrorMessage(string url, HttpResponseMessage response, string content)
+    {
+        var preview = string.IsNullOrWhiteSpace(content)
+            ? response.ReasonPhrase ?? "No response body."
+            : content.Trim();
+        if (preview.Length > 500)
+        {
+            preview = $"{preview[..500]}...";
+        }
+
+        return $"Shiage endpoint failed with status {(int)response.StatusCode}. URL: {url}. Response: {preview}";
     }
 
     private async Task<HttpResponseMessage> SendShiageRequest(string url)
