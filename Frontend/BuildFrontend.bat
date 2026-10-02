@@ -60,6 +60,9 @@ if exist "%STANDALONE_DIR%" (
         echo Standalone folder is still locked. Trying to rename old folder...
         move "%STANDALONE_DIR%" "%LOCKED_STANDALONE_DIR%" >nul 2>nul
         if exist "%STANDALONE_DIR%" (
+            call :force_unlock_standalone
+        )
+        if exist "%STANDALONE_DIR%" (
             echo.
             echo Could not remove locked standalone folder:
             echo %STANDALONE_DIR%
@@ -139,6 +142,22 @@ for /l %%r in (1,1,5) do (
         if exist "%STANDALONE_DIR%" timeout /t 2 /nobreak >nul
     )
 )
+exit /b 0
+
+:force_unlock_standalone
+echo Standalone folder is still locked. Restarting Explorer and retrying cleanup...
+taskkill /F /IM explorer.exe >nul 2>nul
+timeout /t 2 /nobreak >nul
+attrib -R -S -H "%STANDALONE_DIR%\*" /S /D >nul 2>nul
+rmdir /s /q "%STANDALONE_DIR%" >nul 2>nul
+if exist "%STANDALONE_DIR%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Remove-Item -LiteralPath '%STANDALONE_DIR%' -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>nul
+)
+if exist "%STANDALONE_DIR%" (
+    move "%STANDALONE_DIR%" "%LOCKED_STANDALONE_DIR%" >nul 2>nul
+)
+start explorer.exe
+timeout /t 1 /nobreak >nul
 exit /b 0
 
 :failed
