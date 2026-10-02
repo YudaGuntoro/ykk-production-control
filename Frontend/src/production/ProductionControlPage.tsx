@@ -9,7 +9,7 @@ import { formatDateTime, StatusBadge, statusStyles, useDebouncedValue } from "./
 const inputClass =
   "h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-500 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-100 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-300 disabled:dark:text-slate-300";
 const scanButtonClass =
-  "h-11 w-[122px] shrink-0 rounded-md bg-[#0799c9] px-4 text-sm font-bold leading-tight text-white transition hover:bg-[#087ea4] disabled:bg-[#0f5f78] disabled:text-cyan-50 disabled:opacity-100";
+  "h-11 w-full shrink-0 rounded-md bg-[#0799c9] px-4 text-sm font-bold leading-tight text-white transition hover:bg-[#087ea4] disabled:bg-[#0f5f78] disabled:text-cyan-50 disabled:opacity-100 sm:w-[122px]";
 
 const activeStatuses = new Set(["WAITING", "IN_PROGRESS"]);
 const statusOptions: Array<ProductionWorkOrderStatus | "ALL"> = ["ALL", "WAITING", "IN_PROGRESS", "FINISH"];
@@ -454,16 +454,16 @@ export default function ProductionControlPage() {
       ) : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0799c9]">Operation</p>
-          <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Production Control Panel</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Scan operators once, then use the active team for every started order until they are removed.</p>
+          <h1 className="mt-2 text-2xl font-black leading-tight text-slate-900 dark:text-white">Production Control Panel</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-300">Scan operators once, then use the active team for every started order until they are removed.</p>
         </div>
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-0 divide-y divide-slate-100 dark:divide-slate-800 xl:grid-cols-[1fr_1fr_0.8fr] xl:divide-x xl:divide-y-0">
-          <form className="p-5" onSubmit={(event) => void scanOrderNumber(event)}>
+          <form className="p-4 sm:p-5" onSubmit={(event) => void scanOrderNumber(event)}>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Lot No</label>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row">
               <input
@@ -481,7 +481,7 @@ export default function ProductionControlPage() {
             </div>
           </form>
 
-          <form className="p-5" onSubmit={(event) => void scanOperator(event)}>
+          <form className="p-4 sm:p-5" onSubmit={(event) => void scanOperator(event)}>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Scan Operator Aktif</label>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row">
               <input
@@ -498,7 +498,7 @@ export default function ProductionControlPage() {
           </form>
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line Area</label>
               <input
                 className={`${inputClass} mt-3`}
@@ -509,16 +509,16 @@ export default function ProductionControlPage() {
               <p className="mt-2 text-xs text-slate-400 dark:text-slate-300">Dipakai saat Start Order Number.</p>
             </div>
             <div className="grid grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
-              <div className="p-5">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-300">Active Orders</p>
+              <div className="p-3 sm:p-5">
+                <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-300 sm:text-xs">Active Orders</p>
                 <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{activeOrders.length}</p>
               </div>
-              <div className="p-5">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-300">Running in Parallel</p>
+              <div className="p-3 sm:p-5">
+                <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-300 sm:text-xs">Running in Parallel</p>
                 <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{runningOrders.length}</p>
               </div>
-              <div className="p-5">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-300">Active Operators</p>
+              <div className="p-3 sm:p-5">
+                <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-300 sm:text-xs">Active Operators</p>
                 <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{activeOperators.length}</p>
               </div>
             </div>
@@ -526,14 +526,14 @@ export default function ProductionControlPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-bold text-slate-900 dark:text-white">Operator Aktif</h2>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Current shift: {shiftText(activeSummary)}</p>
           </div>
           <button
-            className="h-9 rounded-md border border-rose-200 px-3 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300"
+            className="h-9 w-full rounded-md border border-rose-200 px-3 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300 sm:w-auto"
             disabled={!activeOperators.length || busy}
             onClick={() => {
               setShiftPromptKey("manual-remove-active-operators");
@@ -544,16 +544,16 @@ export default function ProductionControlPage() {
             Remove All
           </button>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {activeOperators.length ? activeOperators.map((operator) => (
             <div className="rounded-md bg-slate-50 p-3 dark:bg-slate-800" key={operator.id}>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-slate-900 dark:text-white">{operator.full_name}</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">{operator.employee_no} / {operator.department}</p>
                   <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">{operator.shift_name || "-"} / {operator.shift_type || "-"}</p>
                 </div>
-                <button className="h-8 shrink-0 rounded-md border border-rose-200 px-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300" disabled={busy} onClick={() => setOperatorPendingRemove(operator)} type="button">
+                <button className="h-8 shrink-0 rounded-md border border-rose-200 px-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300 min-[420px]:w-auto" disabled={busy} onClick={() => setOperatorPendingRemove(operator)} type="button">
                   Remove
                 </button>
               </div>
@@ -565,17 +565,17 @@ export default function ProductionControlPage() {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="font-bold text-slate-900 dark:text-white">Work Orders</h2>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Sorted by latest updated time, newest first.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">
               Lot No / Order Number
               <div className="mt-2 flex gap-2">
                 <input
-                  className="h-9 w-full min-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 sm:w-[280px]"
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 lg:w-[280px]"
                   onChange={(event) => setOrderNumberFilter(event.target.value)}
                   placeholder="Scan / type Lot No or order number"
                   value={orderNumberFilter}
@@ -595,7 +595,7 @@ export default function ProductionControlPage() {
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">
               Status
               <select
-                className="mt-2 h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                className="mt-2 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 lg:w-auto"
                 onChange={(event) => setStatusFilter(event.target.value as ProductionWorkOrderStatus | "ALL")}
                 value={statusFilter}
               >
@@ -606,7 +606,7 @@ export default function ProductionControlPage() {
             </label>
           </div>
         </div>
-        <div className="overflow-x-auto p-5">
+        <div className="hidden overflow-x-auto p-5 md:block">
           <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left">
             <thead className="text-[11px] uppercase tracking-wider text-white">
               <tr>
@@ -650,6 +650,50 @@ export default function ProductionControlPage() {
               })}
             </tbody>
           </table>
+          {!visibleOrders.length ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No work orders found for the selected status.</p> : null}
+        </div>
+        <div className="space-y-3 p-4 md:hidden">
+          {visibleOrders.map((order) => {
+            const selectedRow = selectedId === order.id;
+            return (
+              <article
+                aria-selected={selectedRow}
+                className={`rounded-lg border p-4 transition ${selectedRow ? "border-[#0799c9] bg-cyan-50 dark:bg-cyan-500/10" : "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"}`}
+                key={order.id}
+              >
+                <button
+                  className="block w-full text-left"
+                  onClick={() => selectOrder(order.id)}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-black text-slate-900 dark:text-white">{order.lot_no || "-"}</p>
+                      <p className="mt-1 break-words text-xs font-semibold text-slate-400 dark:text-slate-300">{order.order_number}</p>
+                    </div>
+                    <StatusBadge status={order.status} />
+                  </div>
+                  <dl className="mt-4 grid grid-cols-1 gap-3 text-sm min-[420px]:grid-cols-2">
+                    <div>
+                      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Line</dt>
+                      <dd className="mt-1 break-words font-semibold text-slate-700 dark:text-slate-200">{order.line_name || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Operators</dt>
+                      <dd className="mt-1 font-semibold text-slate-700 dark:text-slate-200">{order.operators?.length ?? 0} operator</dd>
+                    </div>
+                  </dl>
+                </button>
+                <button
+                  className="mt-4 h-9 w-full rounded-md border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#0799c9] hover:text-[#0799c9] dark:border-slate-700 dark:text-slate-200"
+                  onClick={() => openDetail(order.id)}
+                  type="button"
+                >
+                  Detail
+                </button>
+              </article>
+            );
+          })}
           {!visibleOrders.length ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No work orders found for the selected status.</p> : null}
         </div>
       </section>
