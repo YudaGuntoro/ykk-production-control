@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
-import type { ProductionDashboardShiftOutput, ProductionDashboardSummary, ProductionWorkOrder } from "./types";
+import type { ProductionDashboardShiftOutput, ProductionDashboardSummary } from "./types";
 import { ProductionDatePicker, StatusBadge, todayParam } from "./ui";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
@@ -143,21 +143,9 @@ function formatWeight(value?: number | null) {
   return typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 3 }) : "-";
 }
 
-function mapWorkOrdersToDashboardRows(items: ProductionWorkOrder[]) {
-  return items.map((item) => ({
-    id: item.id,
-    project_no: item.project_no,
-    order_no: item.order_number,
-    lot_no: item.lot_no,
-    weight: item.weight,
-    status: item.status,
-  }));
-}
-
 export default function ProductionDashboard() {
   const [date, setDate] = useState(todayParam());
   const [data, setData] = useState<ProductionDashboardSummary | null>(null);
-  const [latestRows, setLatestRows] = useState<ProductionDashboardSummary["work_orders"]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,12 +153,7 @@ export default function ProductionDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [dashboard, workOrders] = await Promise.all([
-        apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`),
-        apiGet<ProductionWorkOrder[]>("/api/production/work-orders"),
-      ]);
-      setData(dashboard);
-      setLatestRows(mapWorkOrdersToDashboardRows(workOrders));
+      setData(await apiGet<ProductionDashboardSummary>(`/api/production/dashboard?date=${date}`));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load the production dashboard.");
     } finally {
@@ -216,7 +199,7 @@ export default function ProductionDashboard() {
             <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
               <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Project No</th><th className="bg-[#0799c9] px-4 py-3">Order No</th><th className="bg-[#0799c9] px-4 py-3">Lot No</th><th className="bg-[#0799c9] px-4 py-3 text-right">Weight</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {latestRows.map((order) => {
+                {(data?.work_orders ?? []).map((order) => {
                   return (
                     <tr className="text-sm" key={order.id}>
                       <td className="px-5 py-4 font-bold text-slate-800 dark:text-white">{order.project_no || "-"}</td>
@@ -229,7 +212,7 @@ export default function ProductionDashboard() {
                 })}
               </tbody>
             </table>
-            {!loading && !latestRows.length ? <p className="px-5 py-12 text-center text-sm text-slate-400">No latest work orders found.</p> : null}
+            {!loading && !(data?.work_orders.length) ? <p className="px-5 py-12 text-center text-sm text-slate-400">No latest work orders found.</p> : null}
           </div>
         </section>
       </div>
