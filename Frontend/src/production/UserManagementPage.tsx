@@ -10,6 +10,7 @@ const inputClass =
   "h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-500 outline-none focus:border-[#0799c9] focus:ring-2 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-300";
 
 const statusOptions: LoginUserStatus[] = ["ACTIVE", "INACTIVE"];
+const adminRoleCode = "ADMIN";
 
 type UserForm = {
   username: string;
@@ -63,6 +64,14 @@ function statusClass(status: LoginUserStatus) {
     : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300";
 }
 
+function isAdminRole(role?: Pick<LoginRole, "role_code"> | null) {
+  return role?.role_code?.toUpperCase() === adminRoleCode;
+}
+
+function isAdminUser(user?: LoginUser | null) {
+  return user?.role?.toUpperCase() === adminRoleCode;
+}
+
 export default function UserManagementPage() {
   const toast = useToast();
   const [items, setItems] = useState<LoginUser[]>([]);
@@ -78,7 +87,10 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const activeRoles = roles.filter((role) => role.is_active);
+  const activeAssignableRoles = roles.filter((role) => role.is_active && !isAdminRole(role));
+  const editableRoles = editing && isAdminUser(editing)
+    ? roles.filter((role) => role.is_active && (role.id === editing.role_id || !isAdminRole(role)))
+    : activeAssignableRoles;
 
   const loadRoles = useCallback(async () => {
     try {
@@ -126,7 +138,7 @@ export default function UserManagementPage() {
 
   function openRegister() {
     setEditing(null);
-    setUserForm({ ...emptyUserForm, role_id: activeRoles[0] ? String(activeRoles[0].id) : "" });
+    setUserForm({ ...emptyUserForm, role_id: activeAssignableRoles[0] ? String(activeAssignableRoles[0].id) : "" });
     setIsUserModalOpen(true);
   }
 
@@ -146,6 +158,12 @@ export default function UserManagementPage() {
 
     if (!editing && !userForm.password) {
       toast.error({ message: "Password wajib diisi saat register user." });
+      return;
+    }
+
+    const selectedRole = roles.find((role) => String(role.id) === userForm.role_id);
+    if (isAdminRole(selectedRole) && !isAdminUser(editing)) {
+      toast.error({ message: "Role Admin tidak bisa dipilih untuk user baru." });
       return;
     }
 
@@ -189,6 +207,10 @@ export default function UserManagementPage() {
     event.preventDefault();
     if (!roleForm.role_code.trim() || !roleForm.role_name.trim()) {
       toast.error({ message: "Role Code dan Role Name wajib diisi." });
+      return;
+    }
+    if (roleForm.role_code.trim().toUpperCase() === adminRoleCode) {
+      toast.error({ message: "Role Admin adalah role sistem dan tidak bisa dibuat manual." });
       return;
     }
 
@@ -253,7 +275,7 @@ export default function UserManagementPage() {
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Role</span>
                 <select className={`${inputClass} mt-2`} disabled={busy} onChange={(event) => updateUserForm("role_id", event.target.value)} value={userForm.role_id}>
                   <option value="">Pilih role</option>
-                  {activeRoles.map((role) => <option key={role.id} value={role.id}>{role.role_name}</option>)}
+                  {editableRoles.map((role) => <option key={role.id} value={role.id}>{role.role_name}</option>)}
                 </select>
               </label>
               <label className="block">
@@ -320,7 +342,7 @@ export default function UserManagementPage() {
       </div>
 
       <section className="grid gap-3 md:grid-cols-4">
-        {roleSummary.map((item) => (
+        {roleSummary.filter((item) => !isAdminRole(item.role)).map((item) => (
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900" key={item.role.id}>
             <p className="text-xs font-bold text-slate-400">{item.role.role_name}</p>
             <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{item.count}</p>
@@ -338,7 +360,7 @@ export default function UserManagementPage() {
             <input className={inputClass} onChange={(event) => setSearch(event.target.value)} placeholder="Search user" value={search} />
             <select className={inputClass} onChange={(event) => setRoleFilter(event.target.value)} value={roleFilter}>
               <option value="ALL">All Role</option>
-              {roles.map((role) => <option key={role.id} value={role.id}>{role.role_name}</option>)}
+              {roles.filter((role) => !isAdminRole(role)).map((role) => <option key={role.id} value={role.id}>{role.role_name}</option>)}
             </select>
             <select className={inputClass} onChange={(event) => setStatusFilter(event.target.value as LoginUserStatus | "ALL")} value={statusFilter}>
               <option value="ALL">All Status</option>

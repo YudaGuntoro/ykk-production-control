@@ -100,6 +100,10 @@ public class UsersController : ApiControllerBase
         {
             var roleCode = NormalizeRoleCode(request.RoleCode);
             var roleName = NormalizeRequired(request.RoleName, "Role name is required.");
+            if (IsAdminRole(roleCode))
+            {
+                throw new InvalidOperationException("Admin role is a system role and cannot be created manually.");
+            }
 
             if (await _db.UserRoles.AnyAsync(x => x.RoleCode == roleCode))
             {
@@ -248,6 +252,10 @@ public class UsersController : ApiControllerBase
             var email = NormalizeText(request.Email);
             var phone = NormalizeText(request.Phone);
             var role = await GetActiveRole(request.RoleId);
+            if (IsAdminRole(role.RoleCode))
+            {
+                throw new InvalidOperationException("Admin role cannot be assigned from user registration.");
+            }
 
             if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
             {
@@ -308,6 +316,18 @@ public class UsersController : ApiControllerBase
             var email = NormalizeText(request.Email);
             var phone = NormalizeText(request.Phone);
             var role = await GetActiveRole(request.RoleId);
+            var currentRoleCode = user.Role;
+            if (user.RoleId.HasValue)
+            {
+                currentRoleCode = await _db.UserRoles
+                    .Where(x => x.Id == user.RoleId.Value)
+                    .Select(x => x.RoleCode)
+                    .FirstOrDefaultAsync() ?? user.Role;
+            }
+            if (IsAdminRole(role.RoleCode) && !IsAdminRole(currentRoleCode))
+            {
+                throw new InvalidOperationException("Admin role cannot be assigned from user update.");
+            }
 
             if (await _db.Users.AnyAsync(x => x.Id != id && x.Username == username))
             {

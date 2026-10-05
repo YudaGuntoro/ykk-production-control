@@ -19,6 +19,7 @@ export default function RoleAccessPage() {
     () => roles.find((role) => String(role.id) === selectedRoleId) ?? null,
     [roles, selectedRoleId],
   );
+  const configurableRoles = roles.filter((role) => role.role_code?.toUpperCase() !== adminRoleCode);
   const isAdminRole = selectedRole?.role_code?.toUpperCase() === adminRoleCode;
   const groupedPages = useMemo(() => {
     return pages.reduce<Record<string, RolePageAccess[]>>((groups, page) => {
@@ -36,8 +37,8 @@ export default function RoleAccessPage() {
         const rows = await apiGet<LoginRole[]>("/api/users/roles?isActive=true");
         if (!alive) return;
         setRoles(rows);
-        const firstNonAdmin = rows.find((role) => role.role_code?.toUpperCase() !== adminRoleCode) ?? rows[0];
-        setSelectedRoleId(firstNonAdmin ? String(firstNonAdmin.id) : "");
+        const firstConfigurableRole = rows.find((role) => role.role_code?.toUpperCase() !== adminRoleCode);
+        setSelectedRoleId(firstConfigurableRole ? String(firstConfigurableRole.id) : "");
       } catch (error) {
         toast.error({ message: error instanceof Error ? error.message : "Gagal load role." });
       } finally {
@@ -118,7 +119,7 @@ export default function RoleAccessPage() {
               onChange={(event) => setSelectedRoleId(event.target.value)}
               value={selectedRoleId}
             >
-              {roles.map((role) => (
+              {configurableRoles.map((role) => (
                 <option key={role.id} value={role.id}>{role.role_name}</option>
               ))}
             </select>
