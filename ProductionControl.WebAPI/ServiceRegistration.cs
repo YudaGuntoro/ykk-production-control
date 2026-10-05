@@ -74,14 +74,8 @@ public static class ServiceRegistration
                 policy.AllowAnyMethod()
                     .AllowAnyHeader();
 
-                if (allowAnyOrigin)
-                {
-                    policy.AllowAnyOrigin();
-                }
-                else
-                {
-                    policy.WithOrigins(allowedOrigins);
-                }
+                policy.SetIsOriginAllowed(origin =>
+                    allowAnyOrigin || allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase));
             });
         });
 
