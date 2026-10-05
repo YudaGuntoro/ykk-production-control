@@ -40,6 +40,30 @@ public class AppRole
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
 
+public class RolePageAccess
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("role_id")]
+    public int RoleId { get; set; }
+
+    [JsonPropertyName("page_key")]
+    public string PageKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("can_access")]
+    public bool CanAccess { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [JsonPropertyName("updated_at")]
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+
+    [JsonIgnore]
+    public AppRole? Role { get; set; }
+}
+
 public class AppUser
 {
     [JsonPropertyName("id")]
@@ -122,6 +146,9 @@ public class UserResponse
 
     [JsonPropertyName("updated_at")]
     public DateTime UpdatedAt { get; set; }
+
+    [JsonPropertyName("accessible_pages")]
+    public List<string> AccessiblePages { get; set; } = [];
 }
 
 public class LoginRequest
@@ -189,4 +216,31 @@ public class SaveRoleRequest
 
     [JsonPropertyName("is_active")]
     public bool IsActive { get; set; } = true;
+}
+
+public class PageAccessDefinitionResponse
+{
+    [JsonPropertyName("page_key")]
+    public string PageKey { get; set; } = string.Empty;
+
+    [JsonPropertyName("page_name")]
+    public string PageName { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("group_name")]
+    public string GroupName { get; set; } = string.Empty;
+}
+
+public class RolePageAccessResponse : PageAccessDefinitionResponse
+{
+    [JsonPropertyName("can_access")]
+    public bool CanAccess { get; set; }
+}
+
+public class SaveRolePageAccessRequest
+{
+    [JsonPropertyName("page_keys")]
+    public List<string> PageKeys { get; set; } = [];
 }

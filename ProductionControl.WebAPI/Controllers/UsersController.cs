@@ -3,6 +3,7 @@ using ProductionControl.Persistence.Context;
 using ProductionControl.Persistence.Services.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace ProductionControl.WebAPI.Controllers;
 
@@ -11,6 +12,20 @@ namespace ProductionControl.WebAPI.Controllers;
 public class UsersController : ApiControllerBase
 {
     private readonly ProductionControlDbContext _db;
+    private static readonly PageAccessDefinitionResponse[] PageDefinitions =
+    [
+        new() { PageKey = "dashboard", PageName = "Dashboard", Path = "/", GroupName = "Main" },
+        new() { PageKey = "production_control", PageName = "Production Control", Path = "/production-control", GroupName = "Operation" },
+        new() { PageKey = "shift_master", PageName = "Shift", Path = "/shift-master", GroupName = "Master Data" },
+        new() { PageKey = "line_master", PageName = "Line", Path = "/line-master", GroupName = "Master Data" },
+        new() { PageKey = "operator_list", PageName = "Operator List", Path = "/pic-cards", GroupName = "Master Data" },
+        new() { PageKey = "users", PageName = "Users", Path = "/users", GroupName = "Master Data" },
+        new() { PageKey = "role_access", PageName = "Role Access", Path = "/role-access", GroupName = "Master Data" },
+        new() { PageKey = "activity_log", PageName = "Activity Log", Path = "/log", GroupName = "Traceability" },
+        new() { PageKey = "production_activity", PageName = "Production Activity", Path = "/production-history", GroupName = "Production Activity" },
+        new() { PageKey = "production_history", PageName = "Production History", Path = "/cutting-lists", GroupName = "Production Activity" },
+        new() { PageKey = "setting", PageName = "Setting", Path = "/production-setting", GroupName = "System" }
+    ];
 
     public UsersController(ProductionControlDbContext db)
     {
@@ -109,6 +124,118 @@ public class UsersController : ApiControllerBase
         {
             return ApiBadRequest(ex);
         }
+    }
+
+    [HttpGet("roles/{roleId:int}/page-access")]
+    public async Task<IActionResult> GetRolePageAccess(int roleId)
+    {
+        var role = await _db.UserRoles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == roleId);
+        if (role is null)
+        {
+            return ApiNotFound("Role was not found.");
+        }
+
+        var allowed = await _db.RolePageAccesses.AsNoTracking()
+            .Where(x => x.RoleId == roleId && x.CanAccess)
+            .Select(x => x.PageKey)
+            .ToListAsync();
+        var allowedSet = allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var isAdmin = IsAdminRole(role.RoleCode);
+
+        var rows = PageDefinitions.Select(page => new RolePageAccessResponse
+        {
+            PageKey = page.PageKey,
+            PageName = page.PageName,
+            Path = page.Path,
+            GroupName = page.GroupName,
+            CanAccess = isAdmin || allowedSet.Contains(page.PageKey)
+        }).ToList();
+
+        return ApiOk(rows);
+    }
+
+    [HttpPut("roles/{roleId:int}/page-access")]
+    public async Task<IActionResult> SaveRolePageAccess(int roleId, [FromBody] SaveRolePageAccessRequest request)
+    {
+        try
+        {
+            var role = await _db.UserRoles.FirstOrDefaultAsync(x => x.Id == roleId);
+            if (role is null)
+            {
+                return ApiNotFound("Role was not found.");
+            }
+
+            if (IsAdminRole(role.RoleCode))
+            {
+                throw new InvalidOperationException("Admin role always has access to all pages.");
+            }
+
+            var validPageKeys = PageDefinitions.Select(x => x.PageKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var selectedPageKeys = request.PageKeys
+                .Where(x => validPageKeys.Contains(x))
+                .Select(x => PageDefinitions.First(page => string.Equals(page.PageKey, x, StringComparison.OrdinalIgnoreCase)).PageKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var existing = await _db.RolePageAccesses
+                .Where(x => x.RoleId == roleId)
+                .ToListAsync();
+
+            foreach (var page in PageDefinitions)
+            {
+                var row = existing.FirstOrDefault(x => string.Equals(x.PageKey, page.PageKey, StringComparison.OrdinalIgnoreCase));
+                if (row is null)
+                {
+                    row = new RolePageAccess
+                    {
+                        RoleId = roleId,
+                        PageKey = page.PageKey,
+                        CreatedAt = DateTime.Now
+                    };
+                    _db.RolePageAccesses.Add(row);
+                }
+
+                row.CanAccess = selectedPageKeys.Contains(page.PageKey);
+                row.UpdatedAt = DateTime.Now;
+            }
+
+            await _db.SaveChangesAsync();
+            return ApiOk(await BuildRolePageAccess(roleId, false), "Role page access updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
+
+    [HttpGet("me/page-access")]
+    public async Task<IActionResult> GetCurrentUserPageAccess()
+    {
+        var userIdText = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdText, out var userId))
+        {
+            return ApiUnauthorized("Invalid user session.");
+        }
+
+        var user = await _db.Users.AsNoTracking()
+            .Include(x => x.RoleMaster)
+            .FirstOrDefaultAsync(x => x.Id == userId);
+        if (user is null)
+        {
+            return ApiUnauthorized("Invalid user session.");
+        }
+
+        if (IsAdminRole(ResolveRoleCode(user)))
+        {
+            return ApiOk(PageDefinitions.Select(x => x.PageKey).ToList());
+        }
+
+        var pageKeys = await _db.RolePageAccesses.AsNoTracking()
+            .Where(x => x.RoleId == user.RoleId && x.CanAccess)
+            .Select(x => x.PageKey)
+            .ToListAsync();
+
+        return ApiOk(pageKeys);
     }
 
     [HttpPost]
@@ -272,4 +399,25 @@ public class UsersController : ApiControllerBase
         string.IsNullOrWhiteSpace(user.RoleMaster?.RoleCode)
             ? user.Role
             : user.RoleMaster.RoleCode;
+
+    private async Task<List<RolePageAccessResponse>> BuildRolePageAccess(int roleId, bool isAdmin)
+    {
+        var allowed = await _db.RolePageAccesses.AsNoTracking()
+            .Where(x => x.RoleId == roleId && x.CanAccess)
+            .Select(x => x.PageKey)
+            .ToListAsync();
+        var allowedSet = allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return PageDefinitions.Select(page => new RolePageAccessResponse
+        {
+            PageKey = page.PageKey,
+            PageName = page.PageName,
+            Path = page.Path,
+            GroupName = page.GroupName,
+            CanAccess = isAdmin || allowedSet.Contains(page.PageKey)
+        }).ToList();
+    }
+
+    private static bool IsAdminRole(string? roleCode) =>
+        string.Equals(roleCode, AppUserRole.ADMIN.ToString(), StringComparison.OrdinalIgnoreCase);
 }

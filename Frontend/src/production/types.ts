@@ -175,6 +175,14 @@ export type LoginRole = {
   updated_at: string;
 };
 
+export type RolePageAccess = {
+  page_key: string;
+  page_name: string;
+  path: string;
+  group_name: string;
+  can_access: boolean;
+};
+
 export type LoginUser = {
   id: number;
   username: string;

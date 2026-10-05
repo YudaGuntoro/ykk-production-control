@@ -5,7 +5,7 @@ export type ApiResponse<T> = {
   data: T;
 };
 
-export type UserRole = "ADMIN" | "SUPERVISOR" | "OPERATOR" | "VIEWER";
+export type UserRole = string;
 export type UserStatus = "ACTIVE" | "INACTIVE";
 
 export type UserResponse = {
@@ -15,6 +15,9 @@ export type UserResponse = {
   email?: string | null;
   phone?: string | null;
   role: UserRole;
+  role_id?: number | null;
+  role_name?: string | null;
+  accessible_pages?: string[];
   status: UserStatus;
   last_login_at?: string | null;
   created_at: string;

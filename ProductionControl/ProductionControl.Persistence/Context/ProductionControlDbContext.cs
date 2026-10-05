@@ -12,6 +12,7 @@ public class ProductionControlDbContext : DbContext
 
     public DbSet<AppUser> Users => Set<AppUser>();
     public DbSet<AppRole> UserRoles => Set<AppRole>();
+    public DbSet<RolePageAccess> RolePageAccesses => Set<RolePageAccess>();
     public DbSet<StatusMaster> StatusMasters => Set<StatusMaster>();
     public DbSet<PicCard> PicCards => Set<PicCard>();
     public DbSet<ShiftMaster> ShiftMasters => Set<ShiftMaster>();
@@ -64,6 +65,19 @@ public class ProductionControlDbContext : DbContext
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             entity.HasIndex(x => x.RoleCode).IsUnique();
             entity.HasIndex(x => new { x.IsActive, x.RoleName });
+        });
+
+        modelBuilder.Entity<RolePageAccess>(entity =>
+        {
+            entity.ToTable("role_page_access");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
+            entity.Property(x => x.PageKey).HasColumnName("page_key").HasMaxLength(80).IsRequired();
+            entity.Property(x => x.CanAccess).HasColumnName("can_access");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            entity.HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.RoleId, x.PageKey }).IsUnique();
         });
 
         modelBuilder.Entity<StatusMaster>(entity =>

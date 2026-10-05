@@ -9,14 +9,28 @@ import {
   HorizontaLDots,
 } from "../icons/index";
 import { NavItem, navItems } from "./navItems";
+import { canAccessPage } from "@/lib/auth";
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const isActive = (path: string) => path === pathname;
   const canShowSubmenu = isExpanded || isHovered || isMobileOpen;
+  const accessibleNavItems = navItems
+    .map((nav) => {
+      if (!nav.subItems) {
+        return canAccessPage(nav.pageKey) ? nav : null;
+      }
+
+      const subItems = nav.subItems.filter((subItem) => canAccessPage(subItem.pageKey));
+      return subItems.length ? { ...nav, subItems } : null;
+    })
+    .filter((nav): nav is NavItem => Boolean(nav));
+  const homePath = accessibleNavItems.find((nav) => nav.path)?.path ??
+    accessibleNavItems.flatMap((nav) => nav.subItems ?? [])[0]?.path ??
+    "/";
   const activeSubmenuName =
-    navItems.find((nav) =>
+    accessibleNavItems.find((nav) =>
       nav.subItems?.some((subItem) => subItem.path === pathname)
     )?.name ?? null;
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(
@@ -135,7 +149,7 @@ const AppSidebar: React.FC = () => {
         className={`py-8 flex  ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
           }`}
       >
-        <Link href="/" className="sidebar-brand-link flex items-center gap-3">
+        <Link href={homePath} className="sidebar-brand-link flex items-center gap-3">
           <span className="sidebar-brand-motion flex items-center gap-4">
             {isExpanded || isHovered || isMobileOpen ? (
               <YkkBrand compact />
@@ -161,7 +175,7 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(navItems)}
+              {renderMenuItems(accessibleNavItems)}
             </div>
           </div>
         </nav>

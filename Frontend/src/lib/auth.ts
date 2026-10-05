@@ -3,6 +3,7 @@ import type { LoginResponse, UserResponse } from "./types";
 const tokenKey = "pcms_access_token";
 const userKey = "pcms_user";
 const expiresKey = "pcms_expires_at";
+const accessiblePagesKey = "pcms_accessible_pages";
 
 function readStorage(key: string) {
   if (typeof window === "undefined") {
@@ -30,6 +31,7 @@ export function saveAuthSession(response: LoginResponse) {
   window.localStorage.setItem(tokenKey, response.access_token);
   window.localStorage.setItem(userKey, JSON.stringify(response.user));
   window.localStorage.setItem(expiresKey, response.expires_at);
+  window.localStorage.setItem(accessiblePagesKey, JSON.stringify(response.user.accessible_pages ?? []));
 }
 
 export function clearAuthSession() {
@@ -40,6 +42,7 @@ export function clearAuthSession() {
   window.localStorage.removeItem(tokenKey);
   window.localStorage.removeItem(userKey);
   window.localStorage.removeItem(expiresKey);
+  window.localStorage.removeItem(accessiblePagesKey);
 }
 
 export function getStoredToken() {
@@ -57,6 +60,49 @@ export function getStoredUser(): UserResponse | null {
   } catch {
     return null;
   }
+}
+
+export function getStoredAccessiblePages() {
+  const user = getStoredUser();
+  if (user?.role?.toUpperCase() === "ADMIN") {
+    return null;
+  }
+
+  const raw = readStorage(accessiblePagesKey);
+  if (!raw) {
+    return user?.accessible_pages ?? [];
+  }
+
+  try {
+    return JSON.parse(raw) as string[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveAccessiblePages(pageKeys: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(accessiblePagesKey, JSON.stringify(pageKeys));
+  const user = getStoredUser();
+  if (user) {
+    window.localStorage.setItem(userKey, JSON.stringify({ ...user, accessible_pages: pageKeys }));
+  }
+}
+
+export function canAccessPage(pageKey?: string | null) {
+  if (!pageKey) {
+    return true;
+  }
+
+  const user = getStoredUser();
+  if (user?.role?.toUpperCase() === "ADMIN") {
+    return true;
+  }
+
+  return (getStoredAccessiblePages() ?? []).includes(pageKey);
 }
 
 export function isTokenExpired(token: string) {
