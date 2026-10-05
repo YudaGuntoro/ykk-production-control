@@ -510,6 +510,7 @@ public class ProductionControlController : ApiControllerBase
             setting.UpdatedAt = now;
 
             await _db.SaveChangesAsync();
+            ClearExternalTokenCache(settingKey);
             return ApiOk(ToSettingResponse(setting), successMessage);
         }
         catch (Exception ex)
@@ -1851,7 +1852,7 @@ public class ProductionControlController : ApiControllerBase
         var client = _httpClientFactory.CreateClient();
         var token = await GetExternalAccessToken();
         var response = await client.SendAsync(CreateShiageRequest(url, token));
-        if ((int)response.StatusCode != 401)
+        if (!IsExternalAuthFailure(response))
         {
             return response;
         }
@@ -1859,6 +1860,17 @@ public class ProductionControlController : ApiControllerBase
         response.Dispose();
         token = await GetExternalAccessToken(forceRefresh: true);
         return await client.SendAsync(CreateShiageRequest(url, token));
+    }
+
+    private static bool IsExternalAuthFailure(HttpResponseMessage response) =>
+        response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden;
+
+    private static void ClearExternalTokenCache(string settingKey)
+    {
+        if (settingKey is InternalSystemAuthSettingKey or InternalSystemRefreshSettingKey)
+        {
+            CachedExternalToken = null;
+        }
     }
 
     private static HttpRequestMessage CreateShiageRequest(string url, string? token)
