@@ -81,7 +81,7 @@ public class AuthService : IAuthService
             }, out var validatedToken);
             if (validatedToken is not JwtSecurityToken jwt ||
                 jwt.Claims.FirstOrDefault(x => x.Type == "token_use")?.Value != "refresh" ||
-                !int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue("sub"), out var userId))
+                !int.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? principal.FindFirst("sub")?.Value, out var userId))
             {
                 throw new UnauthorizedAccessException("Invalid refresh token.");
             }
