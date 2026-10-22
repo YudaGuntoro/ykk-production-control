@@ -1,6 +1,28 @@
 import type { ApiResponse } from "./types";
-import { clearAuthSession, getStoredToken, redirectToSignIn } from "./auth";
+import { clearAuthSession, getStoredRefreshToken, getStoredToken, redirectToSignIn, saveAuthSession } from "./auth";
 import { getRuntimeApiBaseUrl } from "./runtimeApiConfig";
+import type { LoginResponse } from "./types";
+
+let refreshInFlight: Promise<LoginResponse | null> | null = null;
+
+async function refreshSession() {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) return null;
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).then(async (response) => {
+      if (!response.ok) return null;
+      const payload = parseApiResponse<LoginResponse>(await response.text());
+      if (!payload?.success || !payload.data?.access_token) return null;
+      saveAuthSession(payload.data);
+      return payload.data;
+    }).catch(() => null).finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
 
 export function getApiBaseUrl() {
   return getRuntimeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
@@ -36,22 +58,33 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const requestUrl = `${getApiBaseUrl()}${path}`;
+  const response = await fetch(requestUrl, {
     ...init,
     headers,
   });
-  const text = await response.text();
-  const payload = parseApiResponse<T>(text);
+  let finalResponse = response;
+  let text = await response.text();
+  let payload = parseApiResponse<T>(text);
 
-  if (response.status === 401) {
-    clearAuthSession();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/signin")) {
-      redirectToSignIn();
+  if (response.status === 401 && path !== "/api/auth/refresh" && getStoredRefreshToken()) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set("Authorization", `Bearer ${refreshed.access_token}`);
+      finalResponse = await fetch(requestUrl, { ...init, headers: retryHeaders });
+      text = await finalResponse.text();
+      payload = parseApiResponse<T>(text);
     }
   }
 
-  if (!response.ok || payload?.success === false) {
-    throw new Error(payload?.message || `Request failed with status ${response.status}`);
+  if (finalResponse.status === 401) {
+    clearAuthSession();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/signin")) redirectToSignIn();
+  }
+
+  if (!finalResponse.ok || payload?.success === false) {
+    throw new Error(payload?.message || `Request failed with status ${finalResponse.status}`);
   }
 
   return payload ? payload.data : (undefined as T);

@@ -30,4 +30,22 @@ public class AuthController : ApiControllerBase
             return ApiBadRequest(ex);
         }
     }
+
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest request)
+    {
+        try
+        {
+            return ApiOk(await _service.RefreshAsync(request.RefreshToken), "Token refreshed");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return ApiUnauthorized(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return ApiBadRequest(ex);
+        }
+    }
 }

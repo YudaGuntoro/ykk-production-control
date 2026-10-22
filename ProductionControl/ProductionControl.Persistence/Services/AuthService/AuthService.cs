@@ -51,10 +51,81 @@ public class AuthService : IAuthService
         return new LoginResponse
         {
             AccessToken = CreateJwt(user, loginAt, expiresAt),
+            RefreshToken = CreateRefreshJwt(user, loginAt),
             TokenType = "Bearer",
             ExpiresAt = expiresAt,
             User = ToResponse(user)
         };
+    }
+
+    public async Task<LoginResponse> RefreshAsync(string refreshToken)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            throw new UnauthorizedAccessException("Refresh token is required.");
+        }
+
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var principal = handler.ValidateToken(refreshToken, new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = _jwtSettings.Issuer,
+                ValidateAudience = true,
+                ValidAudience = _jwtSettings.Audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SigningKey)),
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(1)
+            }, out var validatedToken);
+            if (validatedToken is not JwtSecurityToken jwt ||
+                jwt.Claims.FirstOrDefault(x => x.Type == "token_use")?.Value != "refresh" ||
+                !int.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue("sub"), out var userId))
+            {
+                throw new UnauthorizedAccessException("Invalid refresh token.");
+            }
+
+            var user = await _db.Users.Include(x => x.RoleMaster).FirstOrDefaultAsync(x => x.Id == userId);
+            if (user is null || user.Status != AppUserStatus.ACTIVE)
+            {
+                throw new UnauthorizedAccessException("User is inactive or no longer exists.");
+            }
+
+            var now = DateTime.Now;
+            var expiresAt = now.AddHours(_jwtSettings.ExpiresHours);
+            return new LoginResponse
+            {
+                AccessToken = CreateJwt(user, now, expiresAt),
+                RefreshToken = CreateRefreshJwt(user, now),
+                TokenType = "Bearer",
+                ExpiresAt = expiresAt,
+                User = ToResponse(user)
+            };
+        }
+        catch (SecurityTokenException)
+        {
+            throw new UnauthorizedAccessException("Refresh token is invalid or expired.");
+        }
+    }
+
+    private string CreateRefreshJwt(AppUser user, DateTime issuedAt)
+    {
+        var token = new JwtSecurityToken(
+            issuer: _jwtSettings.Issuer,
+            audience: _jwtSettings.Audience,
+            claims: new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim("token_use", "refresh")
+            },
+            notBefore: issuedAt,
+            expires: issuedAt.AddDays(30),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SigningKey)),
+                SecurityAlgorithms.HmacSha256));
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     private string CreateJwt(AppUser user, DateTime issuedAt, DateTime expiresAt)

@@ -1,6 +1,7 @@
 import type { LoginResponse, UserResponse } from "./types";
 
 const tokenKey = "pcms_access_token";
+const refreshTokenKey = "pcms_refresh_token";
 const userKey = "pcms_user";
 const expiresKey = "pcms_expires_at";
 const accessiblePagesKey = "pcms_accessible_pages";
@@ -29,6 +30,7 @@ function parseJwtPayload(token: string) {
 
 export function saveAuthSession(response: LoginResponse) {
   window.localStorage.setItem(tokenKey, response.access_token);
+  window.localStorage.setItem(refreshTokenKey, response.refresh_token);
   window.localStorage.setItem(userKey, JSON.stringify(response.user));
   window.localStorage.setItem(expiresKey, response.expires_at);
   window.localStorage.setItem(accessiblePagesKey, JSON.stringify(response.user.accessible_pages ?? []));
@@ -40,6 +42,7 @@ export function clearAuthSession() {
   }
 
   window.localStorage.removeItem(tokenKey);
+  window.localStorage.removeItem(refreshTokenKey);
   window.localStorage.removeItem(userKey);
   window.localStorage.removeItem(expiresKey);
   window.localStorage.removeItem(accessiblePagesKey);
@@ -47,6 +50,10 @@ export function clearAuthSession() {
 
 export function getStoredToken() {
   return readStorage(tokenKey);
+}
+
+export function getStoredRefreshToken() {
+  return readStorage(refreshTokenKey);
 }
 
 export function getStoredUser(): UserResponse | null {
@@ -118,7 +125,7 @@ export function isTokenExpired(token: string) {
 
 export function hasValidAuthSession() {
   const token = getStoredToken();
-  if (!token || isTokenExpired(token)) {
+  if (!token || (isTokenExpired(token) && !getStoredRefreshToken())) {
     clearAuthSession();
     return false;
   }

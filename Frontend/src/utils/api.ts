@@ -1,4 +1,6 @@
 import { getRuntimeApiBaseUrl } from "@/lib/runtimeApiConfig";
+import { clearAuthSession, getStoredRefreshToken, saveAuthSession } from "@/lib/auth";
+import type { LoginResponse } from "@/lib/types";
 
 export type QueryParamValue =
   | string
@@ -40,6 +42,28 @@ const storedTokenKey = "pcms_access_token";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const DEFAULT_TIMEOUT = 30000;
 const AUTH_COOKIE_NAMES = ["token", "accessToken", "authToken"];
+let refreshInFlight: Promise<boolean> | null = null;
+
+const refreshSession = async () => {
+  const refreshToken = typeof window !== "undefined"
+    ? window.localStorage.getItem("pcms_refresh_token")
+    : null;
+  if (!refreshToken) return false;
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(buildUrl("/api/auth/refresh"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    }).then(async (response) => {
+      if (!response.ok) return false;
+      const payload = await response.json() as { success?: boolean; data?: LoginResponse };
+      if (!payload.success || !payload.data?.access_token) return false;
+      saveAuthSession(payload.data);
+      return true;
+    }).catch(() => false).finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+};
 
 const getCookie = (name: string) => {
   if (typeof document === "undefined") {
@@ -168,7 +192,8 @@ const request = async <T>(
   signal?.addEventListener("abort", abortRequest);
 
   try {
-    const response = await fetch(buildUrl(endpoint, params), {
+    const requestUrl = buildUrl(endpoint, params);
+    const requestInit: RequestInit = {
       ...fetchOptions,
       body:
         body === undefined || body === null || isFormData(body)
@@ -176,8 +201,19 @@ const request = async <T>(
           : JSON.stringify(body),
       headers: createHeaders(body, fetchOptions.headers),
       signal: controller.signal,
-    });
+    };
+    let response = await fetch(requestUrl, requestInit);
+    if (response.status === 401 && endpoint !== "/api/auth/refresh" && getStoredRefreshToken()) {
+      if (await refreshSession()) {
+        requestInit.headers = createHeaders(body, fetchOptions.headers);
+        response = await fetch(requestUrl, requestInit);
+      }
+    }
     const data = await parseResponse<T>(response);
+
+    if (response.status === 401) {
+      clearAuthSession();
+    }
 
     if (!response.ok) {
       const message =
