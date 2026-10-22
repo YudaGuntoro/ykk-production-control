@@ -10,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove="publish\**" />
+    <None Remove="publish\**" />
     <Content Include="iconapi.ico" />
     <Content Include="Template\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
