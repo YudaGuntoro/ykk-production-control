@@ -1850,16 +1850,50 @@ public class ProductionControlController : ApiControllerBase
     private async Task<HttpResponseMessage> SendShiageRequest(string url)
     {
         var client = _httpClientFactory.CreateClient();
-        var token = await GetExternalAccessToken();
+        string? token;
+        try
+        {
+            token = await GetExternalAccessToken();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Login awal ke endpoint Shiage gagal. Periksa username/password di Settings. Detail: {ex.Message}", ex);
+        }
+
         var response = await client.SendAsync(CreateShiageRequest(url, token));
         if (!IsExternalAuthFailure(response))
         {
             return response;
         }
 
+        var rejectedStatus = (int)response.StatusCode;
         response.Dispose();
-        token = await GetExternalAccessToken(forceRefresh: true);
-        return await client.SendAsync(CreateShiageRequest(url, token));
+        // A 401/403 from Shiage means the cached access token was rejected.
+        // Re-authenticate with the credentials saved in Settings instead of
+        // trying the cached refresh token again.
+        try
+        {
+            token = await GetExternalAccessToken(forceLogin: true);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Shiage menolak token (HTTP {rejectedStatus}) dan login ulang memakai username/password di Settings gagal. Periksa kredensial dan endpoint login. Detail: {ex.Message}", ex);
+        }
+
+        var retryResponse = await client.SendAsync(CreateShiageRequest(url, token));
+        if (IsExternalAuthFailure(retryResponse))
+        {
+            var retryStatus = (int)retryResponse.StatusCode;
+            var retryContent = await retryResponse.Content.ReadAsStringAsync();
+            retryResponse.Dispose();
+            var detail = string.IsNullOrWhiteSpace(retryContent) ? string.Empty : $" Detail server: {retryContent.Trim()[..Math.Min(retryContent.Trim().Length, 300)]}";
+            throw new InvalidOperationException(
+                $"Login ulang ke Shiage berhasil, tetapi endpoint tetap menolak akses (HTTP {retryStatus}). Periksa izin akun atau akses endpoint.{detail}");
+        }
+
+        return retryResponse;
     }
 
     private static bool IsExternalAuthFailure(HttpResponseMessage response) =>
@@ -1885,7 +1919,7 @@ public class ProductionControlController : ApiControllerBase
         return request;
     }
 
-    private async Task<string?> GetExternalAccessToken(bool forceRefresh = false)
+    private async Task<string?> GetExternalAccessToken(bool forceLogin = false)
     {
         var authSetting = await GetIntegrationSettingEntity(InternalSystemAuthSettingKey);
         if (!authSetting.IsActive)
@@ -1904,7 +1938,7 @@ public class ProductionControlController : ApiControllerBase
         }
 
         var cacheKey = $"{baseUrl}|{username}";
-        if (!forceRefresh && CachedExternalToken is { } cachedToken &&
+        if (!forceLogin && CachedExternalToken is { } cachedToken &&
             cachedToken.CacheKey == cacheKey &&
             cachedToken.ExpiresAt > DateTimeOffset.Now.AddMinutes(1))
         {
@@ -1914,14 +1948,14 @@ public class ProductionControlController : ApiControllerBase
         await ExternalTokenLock.WaitAsync();
         try
         {
-            if (!forceRefresh && CachedExternalToken is { } lockedToken &&
+            if (!forceLogin && CachedExternalToken is { } lockedToken &&
                 lockedToken.CacheKey == cacheKey &&
                 lockedToken.ExpiresAt > DateTimeOffset.Now.AddMinutes(1))
             {
                 return lockedToken.AccessToken;
             }
 
-            if (CachedExternalToken is { RefreshToken: { Length: > 0 } refreshToken } &&
+            if (!forceLogin && CachedExternalToken is { RefreshToken: { Length: > 0 } refreshToken } &&
                 CachedExternalToken.CacheKey == cacheKey)
             {
                 var refreshedToken = await RefreshExternalAccessToken(refreshToken, baseUrl, cacheKey);
