@@ -624,6 +624,9 @@ public class ProductionDashboardWorkOrderResponse
     [JsonPropertyName("lot_no")]
     public string? LotNo { get; set; }
 
+    [JsonPropertyName("line")]
+    public string? Line { get; set; }
+
     [JsonPropertyName("weight")]
     public decimal? Weight { get; set; }
 

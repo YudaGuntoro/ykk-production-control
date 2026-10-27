@@ -1161,7 +1161,6 @@ public class ProductionControlController : ApiControllerBase
             ["LONG_SHIFT_2"] = 5
         };
         var shifts = await _db.ShiftMasters.AsNoTracking()
-            .Where(x => x.IsActive)
             .ToListAsync();
 
         return ApiOk(shifts
@@ -2874,6 +2873,7 @@ public class ProductionControlController : ApiControllerBase
             ProjectNo = rpo?.ProjectNo,
             OrderNo = rpo?.OrderNo ?? order.OrderNumber,
             LotNo = rpo?.LotNo,
+            Line = order.LineCode,
             Weight = rpo?.Weight,
             Status = order.Status
         };

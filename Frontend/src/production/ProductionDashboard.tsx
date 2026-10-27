@@ -199,7 +199,7 @@ export default function ProductionDashboard() {
           </div>
           <div className="hidden overflow-x-auto p-5 md:block">
             <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
-              <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Project No</th><th className="bg-[#0799c9] px-4 py-3">Order No</th><th className="bg-[#0799c9] px-4 py-3">Lot No</th><th className="bg-[#0799c9] px-4 py-3 text-right">Weight</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
+              <thead className="text-[11px] uppercase tracking-wider text-white"><tr><th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Project No</th><th className="bg-[#0799c9] px-4 py-3">Order No</th><th className="bg-[#0799c9] px-4 py-3">Lot No</th><th className="bg-[#0799c9] px-4 py-3">Line</th><th className="bg-[#0799c9] px-4 py-3 text-right">Weight</th><th className="rounded-r-lg bg-[#0799c9] px-5 py-3">Status</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {(data?.work_orders ?? []).map((order) => {
                   return (
@@ -207,6 +207,7 @@ export default function ProductionDashboard() {
                       <td className="px-5 py-4 font-bold text-slate-800 dark:text-white">{order.project_no || "-"}</td>
                       <td className="px-4 py-4 font-semibold text-slate-700 dark:text-slate-200">{order.order_no || "-"}</td>
                       <td className="px-4 py-4 font-semibold text-slate-700 dark:text-slate-200">{order.lot_no || "-"}</td>
+                      <td className="px-4 py-4 font-semibold text-slate-700 dark:text-slate-200">{order.line || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs font-semibold text-slate-500 dark:text-slate-300">{formatWeight(order.weight)}</td>
                       <td className="px-5 py-4"><StatusBadge status={order.status} /></td>
                     </tr>
@@ -234,6 +235,10 @@ export default function ProductionDashboard() {
                   <div>
                     <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Lot No</dt>
                     <dd className="mt-1 break-words font-semibold text-slate-700 dark:text-slate-200">{order.lot_no || "-"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Line</dt>
+                    <dd className="mt-1 font-semibold text-slate-700 dark:text-slate-200">{order.line || "-"}</dd>
                   </div>
                   <div>
                     <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Weight</dt>

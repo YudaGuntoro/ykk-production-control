@@ -82,6 +82,7 @@ export type ProductionDashboardWorkOrder = {
   project_no?: string | null;
   order_no?: string | null;
   lot_no?: string | null;
+  line?: string | null;
   weight?: number | null;
   status: ProductionWorkOrderStatus;
 };
