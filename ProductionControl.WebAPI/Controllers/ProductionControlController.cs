@@ -166,15 +166,24 @@ public class ProductionControlController : ApiControllerBase
             if (existingOrder is not null)
             {
                 var shiageSetting = await GetShiageLotNoSettingEntity();
-                if (shiageSetting.IsActive && !string.IsNullOrWhiteSpace(shiageSetting.BaseUrl))
+                if (!shiageSetting.IsActive || string.IsNullOrWhiteSpace(shiageSetting.BaseUrl))
                 {
-                    var existingShiageResult = await FetchShiageLotNo(code, lineNo);
-                    if (!string.IsNullOrWhiteSpace(existingShiageResult?.Line))
-                    {
-                        existingOrder.LineCode = NormalizeLineCode(existingShiageResult.Line);
-                    }
+                    throw new InvalidOperationException("Line belum diperbarui. Aktifkan endpoint Shiage Lot No dan isi Base URL di Setting, lalu scan ulang.");
                 }
 
+                var existingLotNo = NormalizeText(existingOrder.ReleaseProductionOrderDetail?.LotNo) ?? code;
+                var existingShiageResult = await FetchShiageLotNo(existingLotNo, lineNo);
+                if (existingShiageResult is null)
+                {
+                    throw new InvalidOperationException("Line belum diperbarui. Lot No tidak ditemukan pada respons endpoint Shiage.");
+                }
+
+                if (string.IsNullOrWhiteSpace(existingShiageResult.Line))
+                {
+                    throw new InvalidOperationException("Line belum diperbarui. Field LINE kosong atau tidak tersedia pada respons endpoint Shiage.");
+                }
+
+                existingOrder.LineCode = NormalizeLineCode(existingShiageResult.Line);
                 AddLog(existingOrder.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {code}");
                 await _db.SaveChangesAsync();
                 return ApiOk(ToResponse(existingOrder), "Lot No found.");
