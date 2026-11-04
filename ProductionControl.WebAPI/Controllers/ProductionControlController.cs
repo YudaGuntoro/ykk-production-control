@@ -165,6 +165,16 @@ public class ProductionControlController : ApiControllerBase
 
             if (existingOrder is not null)
             {
+                var shiageSetting = await GetShiageLotNoSettingEntity();
+                if (shiageSetting.IsActive && !string.IsNullOrWhiteSpace(shiageSetting.BaseUrl))
+                {
+                    var existingShiageResult = await FetchShiageLotNo(code, lineNo);
+                    if (!string.IsNullOrWhiteSpace(existingShiageResult?.Line))
+                    {
+                        existingOrder.LineCode = NormalizeLineCode(existingShiageResult.Line);
+                    }
+                }
+
                 AddLog(existingOrder.Id, ProductionActivityType.CUTTING_LIST_SCAN, $"Lot No scan {code}");
                 await _db.SaveChangesAsync();
                 return ApiOk(ToResponse(existingOrder), "Lot No found.");
@@ -197,6 +207,7 @@ public class ProductionControlController : ApiControllerBase
                 await _db.SaveChangesAsync();
             }
 
+            order.LineCode = NormalizeLineCode(shiageResult.Line);
             await UpsertReleaseProductionOrderDetail(
                 order.Id,
                 orderNumber,
@@ -626,13 +637,13 @@ public class ProductionControlController : ApiControllerBase
             var lineMasterId = request?.AreaMasterId ?? order.AreaMasterId;
             if (!lineMasterId.HasValue)
             {
-                throw new InvalidOperationException("Pilih line sebelum Start Order Number.");
+                throw new InvalidOperationException("Pilih area sebelum Start Order Number.");
             }
 
             var line = await _db.AreaMasters.FirstOrDefaultAsync(x => x.Id == lineMasterId.Value && x.IsActive);
             if (line is null)
             {
-                throw new InvalidOperationException("Line tidak ditemukan atau sudah tidak aktif.");
+                throw new InvalidOperationException("Area tidak ditemukan atau sudah tidak aktif.");
             }
 
             var startedAt = order.StartedAt ?? DateTime.Now;
@@ -643,7 +654,6 @@ public class ProductionControlController : ApiControllerBase
             order.ShiftMasterId = currentShift?.Id;
             order.AreaMasterId = line.Id;
             order.AreaMaster = line;
-            order.LineCode = line.AreaCode;
             order.UpdatedAt = DateTime.Now;
             await ReplaceOperatorSnapshots(
                 order.Id,
@@ -1224,7 +1234,7 @@ public class ProductionControlController : ApiControllerBase
         {
             success = true,
             statusCode = StatusCodes.Status200OK,
-            message = "Get line master success.",
+            message = "Get area master success.",
             data = items,
             pagination = new
             {
@@ -1248,22 +1258,22 @@ public class ProductionControlController : ApiControllerBase
 
             if (string.IsNullOrWhiteSpace(lineNo))
             {
-                throw new ArgumentException("Line No is required.");
+                throw new ArgumentException("Area No is required.");
             }
 
             if (string.IsNullOrWhiteSpace(lineName))
             {
-                throw new ArgumentException("Line Name is required.");
+                throw new ArgumentException("Area Name is required.");
             }
 
             if (await _db.AreaMasters.AnyAsync(x => x.AreaCode == lineNo))
             {
-                throw new InvalidOperationException("Line No is already used.");
+                throw new InvalidOperationException("Area No is already used.");
             }
 
             if (await _db.AreaMasters.AnyAsync(x => x.AreaName == lineName))
             {
-                throw new InvalidOperationException("Line Name is already used.");
+                throw new InvalidOperationException("Area Name is already used.");
             }
 
             var now = DateTime.Now;
@@ -1279,7 +1289,7 @@ public class ProductionControlController : ApiControllerBase
 
             _db.AreaMasters.Add(line);
             await _db.SaveChangesAsync();
-            return ApiCreated(line, "Line master created successfully.");
+            return ApiCreated(line, "Area master created successfully.");
         }
         catch (Exception ex)
         {
@@ -1295,7 +1305,7 @@ public class ProductionControlController : ApiControllerBase
             var area = await _db.AreaMasters.FindAsync(id);
             if (area is null)
             {
-                return ApiNotFound("Line master was not found.");
+                return ApiNotFound("Area master was not found.");
             }
 
             var lineNo = request.RawLineNo.Trim().ToUpperInvariant();
@@ -1303,22 +1313,22 @@ public class ProductionControlController : ApiControllerBase
 
             if (string.IsNullOrWhiteSpace(lineNo))
             {
-                throw new ArgumentException("Line No is required.");
+                throw new ArgumentException("Area No is required.");
             }
 
             if (string.IsNullOrWhiteSpace(lineName))
             {
-                throw new ArgumentException("Line Name is required.");
+                throw new ArgumentException("Area Name is required.");
             }
 
             if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaCode == lineNo))
             {
-                throw new InvalidOperationException("Line No is already used.");
+                throw new InvalidOperationException("Area No is already used.");
             }
 
             if (await _db.AreaMasters.AnyAsync(x => x.Id != id && x.AreaName == lineName))
             {
-                throw new InvalidOperationException("Line Name is already used.");
+                throw new InvalidOperationException("Area Name is already used.");
             }
 
             area.AreaCode = lineNo;
@@ -1328,7 +1338,7 @@ public class ProductionControlController : ApiControllerBase
             area.UpdatedAt = DateTime.Now;
 
             await _db.SaveChangesAsync();
-            return ApiOk(area, "Line master updated successfully.");
+            return ApiOk(area, "Area master updated successfully.");
         }
         catch (Exception ex)
         {

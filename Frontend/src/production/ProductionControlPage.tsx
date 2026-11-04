@@ -95,7 +95,7 @@ export default function ProductionControlPage() {
       setAreaMasters(sortedAreas);
       setSelectedAreaMasterId(sortedAreas[0] ? String(sortedAreas[0].id) : "");
     } catch (err) {
-      toast.error({ message: err instanceof Error ? err.message : "Failed to load line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load area master." });
     }
   }, [toast]);
 
@@ -264,7 +264,7 @@ export default function ProductionControlPage() {
   function startBlockedReason() {
     if (!selected) return "Pilih Order Number terlebih dahulu.";
     if (activeOperators.length < 1) return "Tidak boleh Start karena belum ada operator aktif. Scan minimal 1 operator terlebih dahulu.";
-    if (!selectedAreaMasterId) return "Line kerja belum tersedia. Tambahkan Line Master terlebih dahulu.";
+    if (!selectedAreaMasterId) return "Area kerja belum tersedia. Tambahkan Area Master terlebih dahulu.";
     if (selected.status === "IN_PROGRESS") return "Tidak boleh Start karena Order Number sudah berjalan.";
     if (selected.status === "FINISH") return "Tidak boleh Start karena Order Number sudah finish.";
     return null;
@@ -499,11 +499,11 @@ export default function ProductionControlPage() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             <div className="p-4 sm:p-5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line Area</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area</label>
               <input
                 className={`${inputClass} mt-3`}
                 disabled
-                placeholder="Line belum tersedia"
+                placeholder="Area belum tersedia"
                 value={selectedAreaText}
               />
               <p className="mt-2 text-xs text-slate-400 dark:text-slate-300">Dipakai saat Start Order Number.</p>
@@ -633,7 +633,7 @@ export default function ProductionControlPage() {
                       <p className="font-bold text-slate-900 dark:text-white">{order.lot_no || "-"}</p>
                       <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">{order.order_number}</p>
                     </td>
-                    <td className="px-4 py-4 text-xs font-semibold text-slate-500 dark:text-slate-300">{order.line_name || "-"}</td>
+                    <td className="px-4 py-4 text-xs font-semibold text-slate-500 dark:text-slate-300">{order.line_code || "-"}</td>
                     <td className="px-4 py-4">
                       <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                         {order.operators?.length ?? 0} operator
@@ -676,7 +676,7 @@ export default function ProductionControlPage() {
                   <dl className="mt-4 grid grid-cols-1 gap-3 text-sm min-[420px]:grid-cols-2">
                     <div>
                       <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Line</dt>
-                      <dd className="mt-1 break-words font-semibold text-slate-700 dark:text-slate-200">{order.line_name || "-"}</dd>
+                      <dd className="mt-1 break-words font-semibold text-slate-700 dark:text-slate-200">{order.line_code || "-"}</dd>
                     </div>
                     <div>
                       <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Operators</dt>
@@ -729,7 +729,7 @@ export default function ProductionControlPage() {
                   <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.line_code}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 dark:text-slate-300">Line</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-300">Area</p>
                   <p className="mt-1 font-black text-slate-900 dark:text-white">{selected.line_name || "-"}</p>
                 </div>
                 <div>

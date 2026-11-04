@@ -42,7 +42,7 @@ export const navItems: NavItem[] = [
     name: "Master Data",
     subItems: [
       { name: "Shift", pageKey: "shift_master", path: "/shift-master" },
-      { name: "Line", pageKey: "line_master", path: "/line-master" },
+      { name: "Area", pageKey: "line_master", path: "/line-master" },
       { name: "Operator List", pageKey: "operator_list", path: "/pic-cards" },
       { name: "Users", pageKey: "users", path: "/users" },
       { name: "Role Access", pageKey: "role_access", path: "/role-access" },

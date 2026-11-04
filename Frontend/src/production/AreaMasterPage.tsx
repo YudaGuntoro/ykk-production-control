@@ -38,7 +38,7 @@ export default function AreaMasterPage() {
     try {
       setItems(await apiGet<AreaMaster[]>("/api/production/line-master?page=1&pageSize=100"));
     } catch (err) {
-      toast.error({ message: err instanceof Error ? err.message : "Failed to load line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to load area master." });
     }
   }, [toast]);
 
@@ -58,7 +58,7 @@ export default function AreaMasterPage() {
     event.preventDefault();
 
     if (!form.line_no.trim() || !form.line_name.trim()) {
-      toast.error({ message: "Line No dan Line Name wajib diisi." });
+      toast.error({ message: "Area No dan Area Name wajib diisi." });
       return;
     }
 
@@ -71,10 +71,10 @@ export default function AreaMasterPage() {
         is_active: form.is_active,
       });
       setForm(emptyForm);
-      toast.success({ message: "Line master berhasil ditambahkan." });
+      toast.success({ message: "Area master berhasil ditambahkan." });
       await load();
     } catch (err) {
-      toast.error({ message: err instanceof Error ? err.message : "Failed to create line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to create area master." });
     } finally {
       setBusy(false);
     }
@@ -85,7 +85,7 @@ export default function AreaMasterPage() {
     if (!editing) return;
 
     if (!editForm.line_no.trim() || !editForm.line_name.trim()) {
-      toast.error({ message: "Line No dan Line Name wajib diisi." });
+      toast.error({ message: "Area No dan Area Name wajib diisi." });
       return;
     }
 
@@ -99,10 +99,10 @@ export default function AreaMasterPage() {
       });
       setEditing(null);
       setEditForm(emptyForm);
-      toast.success({ message: "Line master berhasil diupdate." });
+      toast.success({ message: "Area master berhasil diupdate." });
       await load();
     } catch (err) {
-      toast.error({ message: err instanceof Error ? err.message : "Failed to update line master." });
+      toast.error({ message: err instanceof Error ? err.message : "Failed to update area master." });
     } finally {
       setBusy(false);
     }
@@ -120,11 +120,11 @@ export default function AreaMasterPage() {
           <form className="w-full max-w-3xl overflow-hidden rounded-lg border border-[#0799c9] bg-white shadow-xl dark:bg-slate-900" onSubmit={(event) => void updateArea(event)}>
             <div className="flex items-center justify-between bg-[#0799c9] px-5 py-3 text-white">
               <div>
-                <h2 className="text-sm font-black text-white">Update Line Master</h2>
+                <h2 className="text-sm font-black text-white">Update Area Master</h2>
                 <p className="mt-0.5 text-xs font-semibold text-cyan-50">{editing.line_no}</p>
               </div>
               <button
-                aria-label="Close update line modal"
+                aria-label="Close update area modal"
                 className="flex h-8 w-8 items-center justify-center rounded-md text-sm font-black text-white/80 hover:bg-white/15 hover:text-white"
                 disabled={busy}
                 onClick={() => setEditing(null)}
@@ -136,11 +136,11 @@ export default function AreaMasterPage() {
 
             <div className="grid gap-4 p-5 md:grid-cols-2">
               <label className="block">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line No</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area No</span>
                 <input className={`${inputClass} mt-2 font-mono uppercase`} disabled={busy} onChange={(event) => updateEditForm("line_no", event.target.value)} value={editForm.line_no} />
               </label>
               <label className="block">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line Name</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area Name</span>
                 <input className={`${inputClass} mt-2`} disabled={busy} onChange={(event) => updateEditForm("line_name", event.target.value)} value={editForm.line_name} />
               </label>
               <label className="block md:col-span-2">
@@ -167,35 +167,35 @@ export default function AreaMasterPage() {
 
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0799c9]">Master Data</p>
-        <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Line Master</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Master line untuk kebutuhan produksi.</p>
+        <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-white">Area Master</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Master area untuk kebutuhan produksi.</p>
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div>
-          <h2 className="font-bold text-slate-900 dark:text-white">Tambah Line</h2>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Line No harus unik dan akan disimpan uppercase.</p>
+          <h2 className="font-bold text-slate-900 dark:text-white">Tambah Area</h2>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Area No harus unik dan akan disimpan uppercase.</p>
         </div>
         <form className="mt-4 grid gap-4 lg:grid-cols-[0.8fr_1fr_1.4fr_auto]" onSubmit={(event) => void createArea(event)}>
           <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line No</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area No</span>
             <input
               autoComplete="off"
               className={`${inputClass} mt-2 font-mono uppercase`}
               disabled={busy}
               onChange={(event) => updateForm("line_no", event.target.value)}
-              placeholder="LINE-01"
+              placeholder="AREA-01"
               value={form.line_no}
             />
           </label>
           <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Line Name</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-300">Area Name</span>
             <input
               autoComplete="off"
               className={`${inputClass} mt-2`}
               disabled={busy}
               onChange={(event) => updateForm("line_name", event.target.value)}
-              placeholder="Line 01"
+              placeholder="Area 01"
               value={form.line_name}
             />
           </label>
@@ -212,7 +212,7 @@ export default function AreaMasterPage() {
           </label>
           <div className="flex items-end">
             <button className="h-11 w-full rounded-md bg-[#0799c9] px-5 text-sm font-bold text-white transition hover:bg-[#087ea4] disabled:bg-[#0f5f78] disabled:text-cyan-50 disabled:opacity-100 lg:w-auto" disabled={busy} type="submit">
-              Add Line
+              Add Area
             </button>
           </div>
         </form>
@@ -220,15 +220,15 @@ export default function AreaMasterPage() {
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <h2 className="font-bold text-slate-900 dark:text-white">Line List</h2>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Data master line yang dapat dipakai oleh modul produksi.</p>
+          <h2 className="font-bold text-slate-900 dark:text-white">Area List</h2>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-300">Data master area yang dapat dipakai oleh modul produksi.</p>
         </div>
         <div className="overflow-x-auto p-5">
           <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left">
             <thead className="text-[11px] uppercase tracking-wider text-white">
               <tr>
-                <th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Line No</th>
-                <th className="bg-[#0799c9] px-4 py-3">Line Name</th>
+                <th className="rounded-l-lg bg-[#0799c9] px-5 py-3">Area No</th>
+                <th className="bg-[#0799c9] px-4 py-3">Area Name</th>
                 <th className="bg-[#0799c9] px-4 py-3">Description</th>
                 <th className="bg-[#0799c9] px-4 py-3">Status</th>
                 <th className="rounded-r-lg bg-[#0799c9] px-5 py-3 text-right">Action</th>
@@ -254,7 +254,7 @@ export default function AreaMasterPage() {
               ))}
             </tbody>
           </table>
-          {!items.length ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No line master data.</p> : null}
+          {!items.length ? <p className="px-5 py-12 text-center text-sm text-slate-400 dark:text-slate-200">No area master data.</p> : null}
         </div>
       </section>
     </div>

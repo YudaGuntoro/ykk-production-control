@@ -17,7 +17,7 @@ public class UsersController : ApiControllerBase
         new() { PageKey = "dashboard", PageName = "Dashboard", Path = "/", GroupName = "Main" },
         new() { PageKey = "production_control", PageName = "Production Control", Path = "/production-control", GroupName = "Operation" },
         new() { PageKey = "shift_master", PageName = "Shift", Path = "/shift-master", GroupName = "Master Data" },
-        new() { PageKey = "line_master", PageName = "Line", Path = "/line-master", GroupName = "Master Data" },
+        new() { PageKey = "line_master", PageName = "Area", Path = "/line-master", GroupName = "Master Data" },
         new() { PageKey = "operator_list", PageName = "Operator List", Path = "/pic-cards", GroupName = "Master Data" },
         new() { PageKey = "users", PageName = "Users", Path = "/users", GroupName = "Master Data" },
         new() { PageKey = "role_access", PageName = "Role Access", Path = "/role-access", GroupName = "Master Data" },
