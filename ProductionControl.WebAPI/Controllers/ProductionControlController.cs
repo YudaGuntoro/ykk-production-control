@@ -1876,7 +1876,7 @@ public class ProductionControlController : ApiControllerBase
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Login awal ke endpoint Shiage gagal. Periksa username/password di Settings. Detail: {ex.Message}", ex);
+                BuildExternalAuthErrorMessage("Autentikasi otomatis Shiage gagal", ex), ex);
         }
 
         var response = await client.SendAsync(CreateShiageRequest(url, token));
@@ -1897,7 +1897,7 @@ public class ProductionControlController : ApiControllerBase
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Shiage menolak token (HTTP {rejectedStatus}) dan login ulang memakai username/password di Settings gagal. Periksa kredensial dan endpoint login. Detail: {ex.Message}", ex);
+                BuildExternalAuthErrorMessage($"Shiage menolak token (HTTP {rejectedStatus}) dan login ulang gagal", ex), ex);
         }
 
         var retryResponse = await client.SendAsync(CreateShiageRequest(url, token));
@@ -1916,6 +1916,13 @@ public class ProductionControlController : ApiControllerBase
 
     private static bool IsExternalAuthFailure(HttpResponseMessage response) =>
         response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden;
+
+    private static string BuildExternalAuthErrorMessage(string context, Exception exception) => exception switch
+    {
+        HttpRequestException => $"{context}. Tidak dapat terhubung ke server autentikasi. Periksa layanan server, alamat/port login dan refresh di Settings, serta jaringan. Detail: {exception.Message}",
+        OperationCanceledException => $"{context}. Permintaan ke server autentikasi dibatalkan atau melewati batas waktu. Periksa layanan server dan jaringan. Detail: {exception.Message}",
+        _ => $"{context}. Detail: {exception.Message}"
+    };
 
     private static void ClearExternalTokenCache(string settingKey)
     {
@@ -1976,7 +1983,18 @@ public class ProductionControlController : ApiControllerBase
             if (!forceLogin && CachedExternalToken is { RefreshToken: { Length: > 0 } refreshToken } &&
                 CachedExternalToken.CacheKey == cacheKey)
             {
-                var refreshedToken = await RefreshExternalAccessToken(refreshToken, baseUrl, cacheKey);
+                ExternalAuthToken? refreshedToken = null;
+                try
+                {
+                    refreshedToken = await RefreshExternalAccessToken(refreshToken, baseUrl, cacheKey);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException)
+                {
+                    // A refresh transport failure or malformed response must not prevent
+                    // recovery through the login endpoint using the saved credentials.
+                    HttpContext.RequestServices.GetService<ILogger<ProductionControlController>>()?
+                        .LogWarning("Shiage token refresh failed ({FailureType}); attempting login with saved credentials.", ex.GetType().Name);
+                }
                 if (refreshedToken is not null)
                 {
                     CachedExternalToken = refreshedToken;
